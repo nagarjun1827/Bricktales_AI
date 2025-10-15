@@ -214,38 +214,38 @@ initUpload('uploadArea2','fileInput2','fileInfo2','fileName2','fileSize2','uploa
     "metadata": {}, // Include any custom data to send with each message to your n8n workflow
     "theme": {
       "button": {
-        "backgroundColor": "#ffc8b8",
+        "backgroundColor": "#e66ba6",
         "right": 20,
         "bottom": 20,
         "size": 50,
-        "iconColor": "#373434",
+        "iconColor": "#000000",
         "customIconSrc": "https://www.svgrepo.com/show/339963/chat-bot.svg",
-        "customIconSize": 60,
+        "customIconSize": 50,
         "customIconBorderRadius": 15,
         "autoWindowOpen": {
-          "autoOpen": false,
-          "openDelay": 2
+          "autoOpen": true,
+          "openDelay": 3
         },
         "borderRadius": "rounded"
       },
       "tooltip": {
         "showTooltip": true,
-        "tooltipMessage": "Hello 👋 You can ask me anything about BoQs",
-        "tooltipBackgroundColor": "#fff9f6",
+        "tooltipMessage": "Hello! 👋 You can ask me anything about your BoQs",
+        "tooltipBackgroundColor": "#bebdff",
         "tooltipTextColor": "#1c1c1c",
         "tooltipFontSize": 15
       },
       "chatWindow": {
         "borderRadiusStyle": "rounded",
-        "avatarBorderRadius": 25,
+        "avatarBorderRadius": 19,
         "messageBorderRadius": 10,
         "showTitle": true,
-        "title": "BoQ cost estimator Bot",
+        "title": "BoQ Cost Estimator Bot",
         "titleAvatarSrc": "https://www.svgrepo.com/show/339963/chat-bot.svg",
-        "avatarSize": 40,
+        "avatarSize": 20,
         "welcomeMessage": "Hello! I can help you with your queries about the BoQs",
         "errorMessage": "You ran into an error.",
-        "backgroundColor": "#ffffff",
+        "backgroundColor": "#f2f2f2",
         "height": 600,
         "width": 400,
         "fontSize": 16,
@@ -258,38 +258,38 @@ initUpload('uploadArea2','fileInput2','fileInfo2','fileName2','fileSize2','uploa
         "clearChatOnReload": false,
         "showScrollbar": false,
         "botMessage": {
-          "backgroundColor": "#ff4763",
+          "backgroundColor": "#ad81d9",
           "textColor": "#fafafa",
           "showAvatar": true,
           "avatarSrc": "https://www.svgrepo.com/show/334455/bot.svg",
           "showCopyToClipboardIcon": false
         },
         "userMessage": {
-          "backgroundColor": "#fff6f3",
-          "textColor": "#050505",
+          "backgroundColor": "#e66ba6",
+          "textColor": "#ffffff",
           "showAvatar": true,
           "avatarSrc": "https://www.svgrepo.com/show/532363/user-alt-1.svg"
         },
         "textInput": {
           "placeholder": "Type your query",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#f5f5f5",
           "textColor": "#1e1e1f",
-          "sendButtonColor": "#f36539",
-          "maxChars": 5000,
-          "maxCharsWarningMessage": "You exceeded the characters limit. Please input less than 50 characters.",
-          "autoFocus": false,
-          "borderRadius": 6,
+          "sendButtonColor": "#ad81d9",
+          "maxChars": 100000,
+          "maxCharsWarningMessage": "You exceeded the characters limit. Please input less than 100000 characters.",
+          "autoFocus": true,
+          "borderRadius": 16,
           "sendButtonBorderRadius": 50
         },
         "uploadsConfig": {
           "enabled": true,
           "acceptFileTypes": [
-            "png",
-            "jpeg",
-            "jpg",
-            "pdf"
+            "pdf",
+            "xlsx",
+            "csv",
+            "xls"
           ],
-          "maxSizeInMB": 5,
+          "maxSizeInMB": 10,
           "maxFiles": 1
         },
         "voiceInputConfig": {
