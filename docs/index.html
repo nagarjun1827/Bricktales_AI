@@ -1,349 +1,305 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BrickTales</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        :root {
-            --primary: #ff6b35;
-            --dark: #1a1a2e;
-            --light: #f5f5f5;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        .navbar {
-            background: var(--dark) !important;
-            padding: 1rem 0;
-        }
-
-        .navbar-brand {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: var(--primary) !important;
-        }
-
-        .nav-link {
-            color: white !important;
-            margin: 0 1rem;
-            transition: color 0.3s;
-        }
-
-        .nav-link:hover {
-            color: var(--primary) !important;
-        }
-
-        .hero {
-            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=1200') center/cover;
-            min-height: 600px;
-            display: flex;
-            align-items: center;
-            color: white;
-        }
-
-        .hero h1 {
-            font-size: 3.5rem;
-            font-weight: bold;
-            margin-bottom: 1.5rem;
-        }
-
-        .hero p {
-            font-size: 1.3rem;
-            margin-bottom: 2rem;
-        }
-
-        .btn-primary {
-            background: var(--primary);
-            border: none;
-            padding: 0.8rem 2rem;
-            font-size: 1.1rem;
-            border-radius: 50px;
-            transition: transform 0.3s;
-        }
-
-        .btn-primary:hover {
-            background: #e55a2b;
-            transform: translateY(-3px);
-        }
-
-        .services {
-            padding: 5rem 0;
-            background: var(--light);
-        }
-
-        .service-card {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-            transition: transform 0.3s;
-            margin-bottom: 2rem;
-            height: 100%;
-        }
-
-        .service-card:hover {
-            transform: translateY(-10px);
-        }
-
-        .service-icon {
-            width: 60px;
-            height: 60px;
-            background: var(--primary);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 1.5rem;
-            font-size: 1.5rem;
-            color: white;
-        }
-
-        .stats {
-            background: var(--dark);
-            color: white;
-            padding: 4rem 0;
-        }
-
-        .stat-item h2 {
-            font-size: 3rem;
-            color: var(--primary);
-            font-weight: bold;
-        }
-
-        .cta {
-            background: var(--primary);
-            color: white;
-            padding: 4rem 0;
-        }
-
-        .cta h2 {
-            font-size: 2.5rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .btn-light {
-            padding: 0.8rem 2rem;
-            font-size: 1.1rem;
-            border-radius: 50px;
-        }
-
-        footer {
-            background: var(--dark);
-            color: white;
-            padding: 2rem 0;
-            text-align: center;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BoQ Uploads</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+    .container {
+        display: flex;
+        gap: 40px;
+        background: white;
+        padding: 40px;
+        border-radius: 15px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        max-width: 1000px;
+        width: 100%;
+    }
+    .section {
+        flex: 1;
+    }
+    h2 {
+        color: #333;
+        margin-bottom: 20px;
+        text-align: center;
+        font-size: 24px;
+    }
+    .upload-area {
+        border: 2px dashed #667eea;
+        border-radius: 10px;
+        padding: 30px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+        margin-bottom: 15px;
+    }
+    .upload-area:hover { border-color: #764ba2; background: #f8f9ff; }
+    .upload-area.dragover { border-color: #764ba2; background: #f0f0ff; }
+    .upload-icon { font-size: 40px; color: #667eea; margin-bottom: 10px; }
+    .upload-text { color: #666; font-size: 14px; margin-bottom: 10px; }
+    #fileInput1, #fileInput2 { display: none; }
+    .file-info {
+        background: #f8f9ff;
+        padding: 10px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        display: none;
+    }
+    .file-info.show { display: block; }
+    .file-name { color: #333; font-weight: 600; margin-bottom: 5px; }
+    .file-size { color: #666; font-size: 12px; }
+    .btn {
+        width: 100%;
+        padding: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+    .message {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        text-align: center;
+        display: none;
+        font-size: 14px;
+    }
+    .message.show { display: block; }
+    .message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .message.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    .loader {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #667eea;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        animation: spin 1s linear infinite;
+        margin: 10px auto;
+        display: none;
+    }
+    .loader.show { display: block; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
-            <a class="navbar-brand" href="#">BrickTales</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link" href="#home">Home</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#services">Services</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#about">About</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#contact">Contact</a></li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+<div class="container">
 
-    <section class="hero" id="home">
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-7">
-                    <h1>Building Your Dreams Into Reality</h1>
-                    <p>Professional construction services for residential and commercial projects</p>
-                    <button class="btn btn-primary btn-lg">Get Started</button>
-                </div>
-            </div>
+    <!-- Google Drive Upload Section -->
+    <div class="section">
+        <h2>📁 Upload to Storage</h2>
+        <div class="upload-area" id="uploadArea1">
+            <div class="upload-icon">☁️</div>
+            <div class="upload-text">Click or drag & drop file</div>
+            <input type="file" id="fileInput1">
         </div>
-    </section>
-
-    <section class="services" id="services">
-        <div class="container">
-            <div class="text-center mb-5">
-                <h2 class="display-4 fw-bold">Our Services</h2>
-                <p class="lead">Comprehensive construction solutions for all your needs</p>
-            </div>
-            <div class="row">
-                <div class="col-md-4">
-                    <div class="service-card">
-                        <div class="service-icon">🏗️</div>
-                        <h4>Commercial Building</h4>
-                        <p>Expert construction of office buildings, retail spaces, and industrial facilities with precision and quality.</p>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="service-card">
-                        <div class="service-icon">🏠</div>
-                        <h4>Residential Projects</h4>
-                        <p>Custom home building and renovation services tailored to your vision and lifestyle needs.</p>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="service-card">
-                        <div class="service-icon">🔧</div>
-                        <h4>Renovation & Remodeling</h4>
-                        <p>Transform existing spaces with our comprehensive renovation and remodeling expertise.</p>
-                    </div>
-                </div>
-            </div>
+        <div class="file-info" id="fileInfo1">
+            <div class="file-name" id="fileName1"></div>
+            <div class="file-size" id="fileSize1"></div>
         </div>
-    </section>
+        <button class="btn" id="uploadBtn1" disabled>Upload to Storage</button>
+        <div class="loader" id="loader1"></div>
+        <div class="message" id="message1"></div>
+    </div>
 
-    <section class="stats">
-        <div class="container">
-            <div class="row text-center">
-                <div class="col-md-3">
-                    <div class="stat-item">
-                        <h2>500+</h2>
-                        <p>Projects Completed</p>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-item">
-                        <h2>15</h2>
-                        <p>Years Experience</p>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-item">
-                        <h2>98%</h2>
-                        <p>Client Satisfaction</p>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-item">
-                        <h2>50+</h2>
-                        <p>Expert Team</p>
-                    </div>
-                </div>
-            </div>
+    <!-- Prediction Upload Section -->
+    <div class="section">
+        <h2>🤖 Upload for Prediction</h2>
+        <div class="upload-area" id="uploadArea2">
+            <div class="upload-icon">🧪</div>
+            <div class="upload-text">Click or drag & drop file</div>
+            <input type="file" id="fileInput2">
         </div>
-    </section>
-
-    <section class="cta">
-        <div class="container text-center">
-            <h2>Ready to Start Your Project?</h2>
-            <p class="lead mb-4">Let's discuss your construction needs and bring your vision to life</p>
-            <button class="btn btn-light btn-lg">Contact Us Today</button>
+        <div class="file-info" id="fileInfo2">
+            <div class="file-name" id="fileName2"></div>
+            <div class="file-size" id="fileSize2"></div>
         </div>
-    </section>
+        <button class="btn" id="uploadBtn2" disabled>Predict</button>
+        <div class="loader" id="loader2"></div>
+        <div class="message" id="message2"></div>
+    </div>
 
-    <footer>
-        <div class="container">
-            <p>&copy; 2025 BuildPro Construction. All rights reserved.</p>
-        </div>
-    </footer>
+</div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <!-- <script type="module" defer>
-        import n8nChatUiWidget from 'https://proxy.n8nchatui.com/api/embed/ZzrKt4';
-        n8nChatUiWidget.load();
-    </script> -->
-    <script type="module" defer>
-        import Chatbot from "https://cdn.n8nchatui.com/v1/embed.js";
-        Chatbot.init({
-            "n8nChatUrl": "https://nagarjunts.app.n8n.cloud/webhook/1ab74a11-25b1-40a3-9047-d1629a105a59/chat",
-            "metadata": {}, // Include any custom data to send with each message to your n8n workflow
-            "theme": {
-            "button": {
-                "backgroundColor": "#ffc8b8",
-                "right": 20,
-                "bottom": 20,
-                "size": 50,
-                "iconColor": "#373434",
-                "customIconSrc": "https://www.svgrepo.com/show/339963/chat-bot.svg",
-                "customIconSize": 60,
-                "customIconBorderRadius": 15,
-                "autoWindowOpen": {
-                "autoOpen": false,
-                "openDelay": 2
-                },
-                "borderRadius": "rounded"
-            },
-            "tooltip": {
-                "showTooltip": true,
-                "tooltipMessage": "Hello 👋 You can ask me anything about BoQs",
-                "tooltipBackgroundColor": "#fff9f6",
-                "tooltipTextColor": "#1c1c1c",
-                "tooltipFontSize": 15
-            },
-            "chatWindow": {
-                "borderRadiusStyle": "rounded",
-                "avatarBorderRadius": 25,
-                "messageBorderRadius": 10,
-                "showTitle": true,
-                "title": "BoQ cost estimator Bot",
-                "titleAvatarSrc": "https://www.svgrepo.com/show/339963/chat-bot.svg",
-                "avatarSize": 40,
-                "welcomeMessage": "Hello! I can help you with your queries about the BoQs",
-                "errorMessage": "You ran into an error.",
-                "backgroundColor": "#ffffff",
-                "height": 600,
-                "width": 400,
-                "fontSize": 16,
-                "starterPrompts": [
-                "Who are you?",
-                "What do you do?"
-                ],
-                "starterPromptFontSize": 15,
-                "renderHTML": false,
-                "clearChatOnReload": false,
-                "showScrollbar": false,
-                "botMessage": {
-                "backgroundColor": "#ff4763",
-                "textColor": "#fafafa",
-                "showAvatar": true,
-                "avatarSrc": "https://www.svgrepo.com/show/334455/bot.svg",
-                "showCopyToClipboardIcon": false
-                },
-                "userMessage": {
-                "backgroundColor": "#fff6f3",
-                "textColor": "#050505",
-                "showAvatar": true,
-                "avatarSrc": "https://www.svgrepo.com/show/532363/user-alt-1.svg"
-                },
-                "textInput": {
-                "placeholder": "Type your query",
-                "backgroundColor": "#ffffff",
-                "textColor": "#1e1e1f",
-                "sendButtonColor": "#f36539",
-                "maxChars": 5000,
-                "maxCharsWarningMessage": "You exceeded the characters limit. Please input less than 50 characters.",
-                "autoFocus": false,
-                "borderRadius": 6,
-                "sendButtonBorderRadius": 50
-                },
-                "uploadsConfig": {
-                "enabled": true,
-                "acceptFileTypes": [
-                    "png",
-                    "jpeg",
-                    "jpg",
-                    "pdf"
-                ],
-                "maxSizeInMB": 5,
-                "maxFiles": 1
-                },
-                "voiceInputConfig": {
-                "enabled": true,
-                "maxRecordingTime": 10,
-                "recordingNotSupportedMessage": "To record audio, use modern browsers like Chrome or Firefox that support audio recording"
-                }
-            }
-            }
-            });
-    </script>
+<script>
+function initUpload(uploadAreaId, fileInputId, fileInfoId, fileNameId, fileSizeId, uploadBtnId, loaderId, messageId, endpoint, successText) {
+    const uploadArea = document.getElementById(uploadAreaId);
+    const fileInput = document.getElementById(fileInputId);
+    const fileInfo = document.getElementById(fileInfoId);
+    const fileName = document.getElementById(fileNameId);
+    const fileSize = document.getElementById(fileSizeId);
+    const uploadBtn = document.getElementById(uploadBtnId);
+    const loader = document.getElementById(loaderId);
+    const message = document.getElementById(messageId);
+
+    let selectedFile = null;
+
+    uploadArea.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', (e) => { e.preventDefault(); uploadArea.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
+
+    function handleFile(file) {
+        if (!file) return;
+        selectedFile = file;
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        fileInfo.classList.add('show');
+        uploadBtn.disabled = false;
+        message.classList.remove('show');
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024, sizes = ['Bytes','KB','MB','GB'];
+        const i = Math.floor(Math.log(bytes)/Math.log(k));
+        return Math.round(bytes / Math.pow(k,i)*100)/100 + ' ' + sizes[i];
+    }
+
+    uploadBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+        const formData = new FormData();
+        formData.append('data', selectedFile);
+        uploadBtn.disabled = true;
+        loader.classList.add('show');
+        message.classList.remove('show');
+
+        try {
+            const response = await fetch(endpoint, { method:'POST', body: formData });
+            const result = await response.json();
+            if(response.ok && result.success) showMessage(successText + ': ' + result.fileName, 'success');
+            else showMessage('❌ Failed. Try again.', 'error');
+        } catch (err) {
+            showMessage('❌ Error: ' + err.message, 'error');
+        } finally {
+            loader.classList.remove('show');
+            selectedFile = null;
+            fileInput.value = '';
+            fileInfo.classList.remove('show');
+            uploadBtn.disabled = true;
+        }
+    });
+
+    function showMessage(text, type) {
+        message.textContent = text;
+        message.className = 'message show ' + type;
+    }
+}
+
+// Initialize both sections
+initUpload('uploadArea1','fileInput1','fileInfo1','fileName1','fileSize1','uploadBtn1','loader1','message1','http://localhost:5678/webhook/upload-file','✅ File uploaded successfully');
+initUpload('uploadArea2','fileInput2','fileInfo2','fileName2','fileSize2','uploadBtn2','loader2','message2','http://localhost:5678/webhook/predict','✅ Prediction started');
+</script>
+<script type="module" defer>
+  import Chatbot from "https://cdn.n8nchatui.com/v1/embed.js";
+  Chatbot.init({
+    "n8nChatUrl": "http://localhost:5678/webhook/1ab74a11-25b1-40a3-9047-d1629a105a59/chat",
+    "metadata": {}, // Include any custom data to send with each message to your n8n workflow
+    "theme": {
+      "button": {
+        "backgroundColor": "#ffc8b8",
+        "right": 20,
+        "bottom": 20,
+        "size": 50,
+        "iconColor": "#373434",
+        "customIconSrc": "https://www.svgrepo.com/show/339963/chat-bot.svg",
+        "customIconSize": 60,
+        "customIconBorderRadius": 15,
+        "autoWindowOpen": {
+          "autoOpen": false,
+          "openDelay": 2
+        },
+        "borderRadius": "rounded"
+      },
+      "tooltip": {
+        "showTooltip": true,
+        "tooltipMessage": "Hello 👋 You can ask me anything about BoQs",
+        "tooltipBackgroundColor": "#fff9f6",
+        "tooltipTextColor": "#1c1c1c",
+        "tooltipFontSize": 15
+      },
+      "chatWindow": {
+        "borderRadiusStyle": "rounded",
+        "avatarBorderRadius": 25,
+        "messageBorderRadius": 10,
+        "showTitle": true,
+        "title": "BoQ cost estimator Bot",
+        "titleAvatarSrc": "https://www.svgrepo.com/show/339963/chat-bot.svg",
+        "avatarSize": 40,
+        "welcomeMessage": "Hello! I can help you with your queries about the BoQs",
+        "errorMessage": "You ran into an error.",
+        "backgroundColor": "#ffffff",
+        "height": 600,
+        "width": 400,
+        "fontSize": 16,
+        "starterPrompts": [
+          "Who are you?",
+          "What do you do?"
+        ],
+        "starterPromptFontSize": 15,
+        "renderHTML": false,
+        "clearChatOnReload": false,
+        "showScrollbar": false,
+        "botMessage": {
+          "backgroundColor": "#ff4763",
+          "textColor": "#fafafa",
+          "showAvatar": true,
+          "avatarSrc": "https://www.svgrepo.com/show/334455/bot.svg",
+          "showCopyToClipboardIcon": false
+        },
+        "userMessage": {
+          "backgroundColor": "#fff6f3",
+          "textColor": "#050505",
+          "showAvatar": true,
+          "avatarSrc": "https://www.svgrepo.com/show/532363/user-alt-1.svg"
+        },
+        "textInput": {
+          "placeholder": "Type your query",
+          "backgroundColor": "#ffffff",
+          "textColor": "#1e1e1f",
+          "sendButtonColor": "#f36539",
+          "maxChars": 5000,
+          "maxCharsWarningMessage": "You exceeded the characters limit. Please input less than 50 characters.",
+          "autoFocus": false,
+          "borderRadius": 6,
+          "sendButtonBorderRadius": 50
+        },
+        "uploadsConfig": {
+          "enabled": true,
+          "acceptFileTypes": [
+            "png",
+            "jpeg",
+            "jpg",
+            "pdf"
+          ],
+          "maxSizeInMB": 5,
+          "maxFiles": 1
+        },
+        "voiceInputConfig": {
+          "enabled": true,
+          "maxRecordingTime": 10,
+          "recordingNotSupportedMessage": "To record audio, use modern browsers like Chrome or Firefox that support audio recording"
+        }
+      }
+    }
+    });
+  </script>
 </body>
 </html>
