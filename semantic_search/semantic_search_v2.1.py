@@ -6,9 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 class BoQSemanticSearch:
-    """Simple semantic search for BoQ items"""
+    """Semantic search for BoQ items using Gemini embeddings"""
     
     def __init__(self):
         # Configure Gemini
@@ -24,11 +23,10 @@ class BoQSemanticSearch:
             host=os.getenv('DB_HOST', 'localhost'),
             database=os.getenv('DB_NAME', 'boq_database'),
             user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD','root'),
+            password=os.getenv('DB_PASSWORD', 'root'),
             port=int(os.getenv('DB_PORT', 5432))
         )
         self.cursor = self.conn.cursor()
-        print("✓ Connected to database")
     
     def generate_query_embedding(self, query: str) -> List[float]:
         """Generate embedding for search query"""
@@ -39,15 +37,17 @@ class BoQSemanticSearch:
         )
         return result['embedding']
     
-    def search(self, query: str) -> List[Dict]:
+    def search(self, query: str, limit: int = 5, min_similarity: float = 0.0) -> List[Dict]:
         """
-        Search for items using natural language - Returns top 5 results
+        Search for items using natural language
         
         Args:
             query: Natural language search query (e.g., "concrete foundation work")
+            limit: Maximum number of results to return
+            min_similarity: Minimum similarity score (0-1)
         
         Returns:
-            Top 5 matching items with details and similarity scores
+            List of matching items with details and similarity scores
         """
         print(f"\n🔍 Searching for: '{query}'")
         print("Generating query embedding...")
@@ -58,7 +58,7 @@ class BoQSemanticSearch:
         
         print("Searching database...")
         
-        # Search database using cosine similarity - TOP 5 ONLY
+        # Search database using cosine similarity
         self.cursor.execute("""
             SELECT 
                 bi.item_id,
@@ -73,15 +73,17 @@ class BoQSemanticSearch:
                 p.project_code,
                 l.location_name,
                 bf.file_name,
-                1 - (bi.description_embedding <=> %s::vector) as similarity
+                1 - (bi.description_embedding <=> %s::vector) as similarity,
+                bi.description_embedding <=> %s::vector as distance
             FROM store_boq_items bi
             JOIN store_boq_files bf ON bi.boq_id = bf.boq_id
             JOIN projects p ON bf.project_id = p.project_id
             JOIN locations l ON bi.location_id = l.location_id
             WHERE bi.description_embedding IS NOT NULL
+              AND (1 - (bi.description_embedding <=> %s::vector)) >= %s
             ORDER BY bi.description_embedding <=> %s::vector
-            LIMIT 5
-        """, (query_str, query_str))
+            LIMIT %s
+        """, (query_str, query_str, query_str, min_similarity, query_str, limit))
         
         results = self.cursor.fetchall()
         
@@ -101,36 +103,38 @@ class BoQSemanticSearch:
                 'project_code': row[9],
                 'location': row[10],
                 'file_name': row[11],
-                'similarity': row[12]
+                'similarity': row[12],
+                'distance': row[13]
             })
         
         return formatted_results
     
-    def display_results(self, results: List[Dict]):
-        """Display top 5 search results"""
+    def display_results(self, results: List[Dict], show_details: bool = True):
+        """Display search results in a formatted way"""
         if not results:
             print("\n❌ No results found")
             return
         
-        print(f"\n✓ Top {len(results)} results:\n")
+        print(f"\n✓ Found {len(results)} results:\n")
         print("="*80)
         
         for idx, result in enumerate(results, 1):
-            code_display = result['item_code'] if result['item_code'] else "N/A"
-            
-            print(f"\n{idx}. [{code_display}] {result['description']}")
+            print(f"\n{idx}. [{result['item_code']}] {result['description']}")
             print(f"   Similarity: {result['similarity']:.3f} ({result['similarity']*100:.1f}%)")
-            print(f"   Quantity: {result['quantity']} {result['unit']}")
             
-            if result['supply_rate']:
-                print(f"   Supply Rate: ₹{result['supply_rate']:,.2f}")
-            if result['labour_rate']:
-                print(f"   Labour Rate: ₹{result['labour_rate']:,.2f}")
-            if result['total_amount']:
-                print(f"   Total Amount: ₹{result['total_amount']:,.2f}")
-            
-            print(f"   Project: {result['project_name']} ({result['project_code']})")
-            print(f"   Location: {result['location']}")
+            if show_details:
+                print(f"   Quantity: {result['quantity']} {result['unit']}")
+                
+                if result['supply_rate']:
+                    print(f"   Supply Rate: ₹{result['supply_rate']:,.2f}")
+                if result['labour_rate']:
+                    print(f"   Labour Rate: ₹{result['labour_rate']:,.2f}")
+                if result['total_amount']:
+                    print(f"   Total Amount: ₹{result['total_amount']:,.2f}")
+                
+                print(f"   Project: {result['project_name']} ({result['project_code']})")
+                print(f"   Location: {result['location']}")
+                print(f"   File: {result['file_name']}")
         
         print("\n" + "="*80)
     
@@ -140,31 +144,16 @@ class BoQSemanticSearch:
             self.cursor.close()
         if self.conn:
             self.conn.close()
-        print("\n✓ Database connection closed")
 
 
 def main():
-    """Main execution - Interactive search"""
-    import sys
-    
-    print("="*80)
-    print("BoQ Semantic Search - Top 5 Results")
-    print("="*80)
-    
-    # Initialize searcher
+    """Main execution - simple search interface"""
     searcher = BoQSemanticSearch()
     
-    # If query provided as command line argument
-    if len(sys.argv) > 1:
-        query = ' '.join(sys.argv[1:])
-        results = searcher.search(query)
-        searcher.display_results(results)
-        searcher.close()
-        return
-    
-    # Interactive mode
-    print("\nEnter your search queries (or 'quit' to exit)")
     print("="*80)
+    print("BoQ Semantic Search")
+    print("="*80)
+    print("\nType your search query (or 'quit' to exit)")
     
     while True:
         try:
@@ -177,20 +166,19 @@ def main():
                 break
             
             # Perform search
-            results = searcher.search(query)
-            searcher.display_results(results)
+            results = searcher.search(query, limit=5)
+            
+            # Display results
+            searcher.display_results(results, show_details=True)
         
         except KeyboardInterrupt:
             print("\n\nExiting...")
             break
         except Exception as e:
             print(f"❌ Error: {e}")
-            import traceback
-            traceback.print_exc()
     
     searcher.close()
     print("\n👋 Goodbye!")
-
 
 if __name__ == "__main__":
     main()

@@ -1,13 +1,3 @@
-"""
-Gemini Vectorizer - HIGH PERFORMANCE VERSION
-Features:
-- Parallel processing with ThreadPoolExecutor
-- Batch embedding requests
-- Automatic rate limit handling
-- Progress tracking
-- Error recovery
-"""
-
 import google.generativeai as genai
 import psycopg2
 from psycopg2.extras import execute_values
@@ -207,7 +197,7 @@ class GeminiVectorizerParallel:
             cursor.close()
             conn.close()
     
-    def vectorize_parallel(self, file_id: Optional[int] = None, skip_existing: bool = True):
+    def vectorize_parallel(self, boq_id: Optional[int] = None, skip_existing: bool = True):
         """Generate embeddings using parallel processing"""
         print("\n" + "="*70)
         print("PARALLEL EMBEDDING GENERATION")
@@ -220,9 +210,9 @@ class GeminiVectorizerParallel:
         if skip_existing:
             where_conditions.append("description_embedding IS NULL")
         
-        if file_id:
-            where_conditions.append("file_id = %s")
-            params.append(file_id)
+        if boq_id:
+            where_conditions.append("boq_id = %s")
+            params.append(boq_id)
         
         where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
         

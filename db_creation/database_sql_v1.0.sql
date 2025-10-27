@@ -28,7 +28,7 @@ CREATE TABLE locations (
 -- BOQ_FILES TABLE
 -- =====================================================
 CREATE TABLE boq_files (
-    file_id SERIAL PRIMARY KEY,
+    boq_id SERIAL PRIMARY KEY,
     project_id INT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
     file_name TEXT NOT NULL,
     file_path TEXT,
@@ -45,7 +45,7 @@ CREATE TABLE boq_files (
 -- =====================================================
 CREATE TABLE boq_items (
     item_id SERIAL PRIMARY KEY,
-    file_id INT NOT NULL REFERENCES boq_files(file_id) ON DELETE CASCADE,
+    boq_id INT NOT NULL REFERENCES boq_files(boq_id) ON DELETE CASCADE,
     item_code VARCHAR(50),
     item_description TEXT NOT NULL,
     unit_of_measurement VARCHAR(20) NOT NULL,

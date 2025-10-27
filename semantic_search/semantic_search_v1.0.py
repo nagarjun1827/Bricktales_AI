@@ -1,8 +1,3 @@
-"""
-Semantic Search for BoQ Items
-Simple command-line tool to search your BoQ database using natural language
-"""
-
 import google.generativeai as genai
 import psycopg2
 from typing import List, Dict, Optional
@@ -83,7 +78,7 @@ class BoQSemanticSearch:
                 1 - (bi.description_embedding <=> %s::vector) as similarity,
                 bi.description_embedding <=> %s::vector as distance
             FROM store_boq_items bi
-            JOIN store_boq_files bf ON bi.file_id = bf.file_id
+            JOIN store_boq_files bf ON bi.boq_id = bf.boq_id
             JOIN projects p ON bf.project_id = p.project_id
             JOIN locations l ON bi.location_id = l.location_id
             WHERE bi.description_embedding IS NOT NULL
@@ -184,7 +179,7 @@ class BoQSemanticSearch:
                 bf.file_name,
                 1 - (bi.description_embedding <=> %s::vector) as similarity
             FROM store_boq_items bi
-            JOIN store_boq_files bf ON bi.file_id = bf.file_id
+            JOIN store_boq_files bf ON bi.boq_id = bf.boq_id
             JOIN projects p ON bf.project_id = p.project_id
             JOIN locations l ON bi.location_id = l.location_id
             WHERE bi.description_embedding IS NOT NULL

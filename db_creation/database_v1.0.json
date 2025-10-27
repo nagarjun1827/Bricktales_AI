@@ -32,7 +32,7 @@
   "boq_files": {
     "description": "Metadata and CRUD control for uploaded BoQ files.",
     "columns": {
-      "file_id": "SERIAL PRIMARY KEY",
+      "boq_id": "SERIAL PRIMARY KEY",
       "project_id": "INT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE",
       "file_name": "TEXT NOT NULL",
       "file_path": "TEXT",
@@ -52,7 +52,7 @@
     "description": "Detailed BoQ line items extracted from files.",
     "columns": {
       "item_id": "SERIAL PRIMARY KEY",
-      "file_id": "INT NOT NULL REFERENCES boq_files(file_id) ON DELETE CASCADE",
+      "boq_id": "INT NOT NULL REFERENCES boq_files(boq_id) ON DELETE CASCADE",
       "item_code": "VARCHAR(50)",
       "item_description": "TEXT NOT NULL",
       "unit_of_measurement": "VARCHAR(20) NOT NULL",
@@ -67,7 +67,7 @@
       "updated_at": "TIMESTAMP WITH TIME ZONE DEFAULT NOW()"
     },
     "dependencies": {
-      "file_id": "boq_files.file_id",
+      "boq_id": "boq_files.boq_id",
       "location_id": "locations.location_id"
     }
   }

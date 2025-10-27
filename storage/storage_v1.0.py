@@ -253,7 +253,7 @@ class BoQDatabase:
                 uploaded_by, version, notes
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING file_id
+            RETURNING boq_id
         """, (
             project_id,
             file_info['file_name'],
@@ -263,11 +263,11 @@ class BoQDatabase:
             file_info.get('version', 1),
             file_info.get('notes')
         ))
-        file_id = self.cursor.fetchone()[0]
+        boq_id = self.cursor.fetchone()[0]
         self.conn.commit()
-        return file_id
+        return boq_id
     
-    def insert_boq_items_batch(self, file_id: int, location_id: int, items: List[Dict]):
+    def insert_boq_items_batch(self, boq_id: int, location_id: int, items: List[Dict]):
         """Insert BoQ items in batch with better performance"""
         if not items:
             return
@@ -276,7 +276,7 @@ class BoQDatabase:
         for item in items:
             try:
                 values.append((
-                    file_id,
+                    boq_id,
                     item.get('item_code'),
                     item['item_description'],
                     item['unit_of_measurement'],
@@ -294,7 +294,7 @@ class BoQDatabase:
                 self.cursor,
                 """
                 INSERT INTO boq_items (
-                    file_id, item_code, item_description, unit_of_measurement,
+                    boq_id, item_code, item_description, unit_of_measurement,
                     quantity, supply_unit_rate, labour_unit_rate, location_id
                 )
                 VALUES %s
@@ -756,8 +756,8 @@ def process_boq_file_with_agents(file_path: str, uploaded_by: str = 'system',
             'version': 1,
             'notes': f"Processed with Gemini Agents SDK on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         }
-        file_id = db.insert_boq_file(project_id, file_info)
-        print(f"✓ File ID: {file_id}")
+        boq_id = db.insert_boq_file(project_id, file_info)
+        print(f"✓ File ID: {boq_id}")
         
         # Step 6: Extract and insert items from all sheets (parallel processing)
         print("\nStep 6: Extracting BoQ items from sheets...")
@@ -791,7 +791,7 @@ def process_boq_file_with_agents(file_path: str, uploaded_by: str = 'system',
         
         # Step 7: Insert items (batch insert)
         print(f"\nStep 7: Inserting {len(all_items)} items...")
-        db.insert_boq_items_batch(file_id, location_id, all_items)
+        db.insert_boq_items_batch(boq_id, location_id, all_items)
         print(f"✓ Inserted {len(all_items)} items")
         
         # Summary
@@ -801,7 +801,7 @@ def process_boq_file_with_agents(file_path: str, uploaded_by: str = 'system',
         print(f"{'='*60}")
         print(f"Project ID: {project_id}")
         print(f"Location ID: {location_id}")
-        print(f"File ID: {file_id}")
+        print(f"File ID: {boq_id}")
         print(f"Total Items: {len(all_items)}")
         
         # Calculate totals
@@ -815,7 +815,7 @@ def process_boq_file_with_agents(file_path: str, uploaded_by: str = 'system',
             'success': True,
             'project_id': project_id,
             'location_id': location_id,
-            'file_id': file_id,
+            'boq_id': boq_id,
             'total_items': len(all_items),
             'total_amount': total_amount,
             'processing_time': elapsed_total
