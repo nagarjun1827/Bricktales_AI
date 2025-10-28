@@ -1,21 +1,21 @@
-Line Item ID,Item Code,Description,Unit,Quantity,Similar Items Found,Avg Supply Rate,Min Supply Rate,Max Supply Rate,Avg Labour Rate,Min Labour Rate,Max Labour Rate,Estimated Total (Supply)
-1,1,Supply and installation of 2.5 sq.mm copper pvc insulated conductor wiring (single core) for lighting circuits,Mtr,200.000,1,45.00,45.00,45.00,,,,9000.00
-2,2,Supply and installation of 4.0 sq.mm copper pvc insulated conductor wiring for power circuits,Mtr,300.000,1,80.00,80.00,80.00,,,,24000.00
-3,3,Supply and installation of 6.0 sq.mm copper pvc insulated conductor wiring for oven/AC/heavy load circuits,Mtr,60.000,1,120.00,120.00,120.00,,,,7200.00
-4,4,Concealed conduit PVC (25 mm) including accessories,Mtr,500.000,1,40.00,40.00,40.00,,,,20000.00
-5,5,Concealed conduit PVC (20 mm) including accessories,Mtr,200.000,1,30.00,30.00,30.00,,,,6000.00
-6,6,Modular switch 3/6 A (each) - including plate & wiring termination,Nos,30.000,1,90.00,90.00,90.00,,,,2700.00
-7,7,Modular socket 6/16 A (each) - including plate & wiring termination,Nos,25.000,1,260.00,260.00,260.00,,,,6500.00
-8,8,Ceiling light fittings (LED downlight / tube luminaire) - supply & installation,Nos,20.000,1,900.00,900.00,900.00,,,,18000.00
-9,9,Ceiling fan - supply & installation,Nos,6.000,1,2200.00,2200.00,2200.00,,,,13200.00
-10,10,Distribution Board (Main DB) with enclosure (16/24 way) including MCBs as per requirement,Nos,1.000,1,12000.00,12000.00,12000.00,,,,12000.00
-11,11,MCB single pole 6-10A (each),Nos,10.000,1,180.00,180.00,180.00,,,,1800.00
-12,12,MCB single pole 16-32A (each),Nos,8.000,1,400.00,400.00,400.00,,,,3200.00
-13,13,"E/L (Earth pit) installation with GI plate, salt & charcoal filling, and GI earth conductor upto 10m",set,1.000,1,3500.00,3500.00,3500.00,,,,3500.00
-14,14,Earthing copper conductor 25 mm2 (m) including termination,Mtr,10.000,1,220.00,220.00,220.00,,,,2200.00
-15,15,TV/Telephone/Data point wiring & outlet (per point),Nos,4.000,1,650.00,650.00,650.00,,,,2600.00
-16,16,Exhaust fan (bathroom) - supply & installation,Nos,2.000,1,1200.00,1200.00,1200.00,,,,2400.00
-17,17,Wiring for geyser point (single dedicated line) incl. switch & socket,Nos,1.000,1,1800.00,1800.00,1800.00,,,,1800.00
-18,18,Wiring for Air Conditioner point (per point) incl. isolator,Nos,2.000,1,2800.00,2800.00,2800.00,,,,5600.00
-19,19,"Labour & testing charges (earthing continuity test, insulation test, load testing) - lump sum",ls,1.000,1,12000.00,12000.00,12000.00,,,,12000.00
-20,20,"Contingency / Accessories (switch boxes, saddles, lugs, tapes etc.) allowance (5% of material cost)",ls,1.000,1,6060.00,6060.00,6060.00,,,,6060.00
+Line Item ID,Item Code,Description,Unit,Quantity,Similar Items Found,Recommended Supply Rate,Recommended Labour Rate,Estimated Total (Supply)
+1,1,Supply and installation of 2.5 sq.mm copper pvc insulated conductor wiring (single core) for lighting circuits,Mtr,200.000,1,45.00,,9000.00
+2,2,Supply and installation of 4.0 sq.mm copper pvc insulated conductor wiring for power circuits,Mtr,300.000,1,80.00,,24000.00
+3,3,Supply and installation of 6.0 sq.mm copper pvc insulated conductor wiring for oven/AC/heavy load circuits,Mtr,60.000,1,120.00,,7200.00
+4,4,Concealed conduit PVC (25 mm) including accessories,Mtr,500.000,1,40.00,,20000.00
+5,5,Concealed conduit PVC (20 mm) including accessories,Mtr,200.000,1,30.00,,6000.00
+6,6,Modular switch 3/6 A (each) - including plate & wiring termination,Nos,30.000,1,90.00,,2700.00
+7,7,Modular socket 6/16 A (each) - including plate & wiring termination,Nos,25.000,1,260.00,,6500.00
+8,8,Ceiling light fittings (LED downlight / tube luminaire) - supply & installation,Nos,20.000,1,900.00,,18000.00
+9,9,Ceiling fan - supply & installation,Nos,6.000,1,2200.00,,13200.00
+10,10,Distribution Board (Main DB) with enclosure (16/24 way) including MCBs as per requirement,Nos,1.000,1,12000.00,,12000.00
+11,11,MCB single pole 6-10A (each),Nos,10.000,1,180.00,,1800.00
+12,12,MCB single pole 16-32A (each),Nos,8.000,1,400.00,,3200.00
+13,13,"E/L (Earth pit) installation with GI plate, salt & charcoal filling, and GI earth conductor upto 10m",set,1.000,1,3500.00,,3500.00
+14,14,Earthing copper conductor 25 mm2 (m) including termination,Mtr,10.000,1,220.00,,2200.00
+15,15,TV/Telephone/Data point wiring & outlet (per point),Nos,4.000,1,650.00,,2600.00
+16,16,Exhaust fan (bathroom) - supply & installation,Nos,2.000,1,1200.00,,2400.00
+17,17,Wiring for geyser point (single dedicated line) incl. switch & socket,Nos,1.000,1,1800.00,,1800.00
+18,18,Wiring for Air Conditioner point (per point) incl. isolator,Nos,2.000,1,2800.00,,5600.00
+19,19,"Labour & testing charges (earthing continuity test, insulation test, load testing) - lump sum",ls,1.000,1,12000.00,,12000.00
+20,20,"Contingency / Accessories (switch boxes, saddles, lugs, tapes etc.) allowance (5% of material cost)",ls,1.000,1,6060.00,,6060.00
