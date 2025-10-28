@@ -281,7 +281,7 @@ class BoQDatabase:
         query = """
         INSERT INTO store_boq_files (
             project_id, file_name, file_path, file_type,
-            upload_timestamp, uploaded_by, version, is_active, notes
+            upload_timestamp, uploaded_by, version, is_active
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING boq_id
         """
@@ -295,7 +295,6 @@ class BoQDatabase:
             file_info.get('uploaded_by', 'system'),
             file_info.get('version', 1),
             file_info.get('is_active', True),
-            file_info.get('notes')
         ))
         
         boq_id = self.cursor.fetchone()[0]
@@ -745,7 +744,6 @@ def process_boq_file_with_agents(file_path: str, uploaded_by: str = 'system',
             'file_type': 'xlsx',
             'uploaded_by': uploaded_by,
             'version': 1,
-            'notes': f"Processed with Gemini Agents SDK on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         }
         boq_id = db.insert_boq_file(project_id, file_info)
         print(f"✓ File ID: {boq_id}")
@@ -843,7 +841,7 @@ def main():
     if len(sys.argv) > 1:
         file_path = sys.argv[1]
     else:
-        file_path = './input_files/30_40.xlsx'
+        file_path = './storage_input_files/sample.xlsx'
     
     if not os.path.exists(file_path):
         print(f"✗ Error: File not found: {file_path}")

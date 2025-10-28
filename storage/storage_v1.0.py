@@ -250,7 +250,7 @@ class BoQDatabase:
         self.cursor.execute("""
             INSERT INTO boq_files (
                 project_id, file_name, file_path, file_type, 
-                uploaded_by, version, notes
+                uploaded_by, version
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING boq_id
@@ -261,7 +261,6 @@ class BoQDatabase:
             file_info.get('file_type', 'xlsx'),
             file_info.get('uploaded_by', 'system'),
             file_info.get('version', 1),
-            file_info.get('notes')
         ))
         boq_id = self.cursor.fetchone()[0]
         self.conn.commit()
@@ -754,7 +753,6 @@ def process_boq_file_with_agents(file_path: str, uploaded_by: str = 'system',
             'file_type': 'xlsx',
             'uploaded_by': uploaded_by,
             'version': 1,
-            'notes': f"Processed with Gemini Agents SDK on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         }
         boq_id = db.insert_boq_file(project_id, file_info)
         print(f"✓ File ID: {boq_id}")

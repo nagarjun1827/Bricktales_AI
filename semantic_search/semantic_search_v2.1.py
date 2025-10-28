@@ -123,16 +123,16 @@ class BoQSemanticSearch:
             print(f"   Similarity: {result['similarity']:.3f} ({result['similarity']*100:.1f}%)")
             
             if show_details:
-                print(f"   Quantity: {result['quantity']} {result['unit']}")
+                # print(f"   Quantity: {result['quantity']} {result['unit']}")
                 
                 if result['supply_rate']:
                     print(f"   Supply Rate: ₹{result['supply_rate']:,.2f}")
                 if result['labour_rate']:
                     print(f"   Labour Rate: ₹{result['labour_rate']:,.2f}")
-                if result['total_amount']:
-                    print(f"   Total Amount: ₹{result['total_amount']:,.2f}")
+                # if result['total_amount']:
+                #     print(f"   Total Amount: ₹{result['total_amount']:,.2f}")
                 
-                print(f"   Project: {result['project_name']} ({result['project_code']})")
+                # print(f"   Project: {result['project_name']} ({result['project_code']})")
                 print(f"   Location: {result['location']}")
                 print(f"   File: {result['file_name']}")
         

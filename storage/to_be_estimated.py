@@ -166,6 +166,7 @@ class BoQDatabase:
             self.conn.close()
     
     def insert_project(self, project_info: Dict) -> int:
+        """Insert project - matches schema with version and created_by"""
         start_date = None
         end_date = None
         
@@ -189,12 +190,15 @@ class BoQDatabase:
                 except ValueError:
                     start_date = f"{datetime.now().year}-01-01"
         
+        # Schema: project_name, project_code, client_id, client_name, 
+        #         start_date, end_date, version, created_by
+        # created_at and updated_at have DEFAULT NOW()
         query = """
-        INSERT INTO projects (
-            project_name, project_code, client_name, 
-            start_date, end_date, created_at
-        ) VALUES (%s, %s, %s, %s, %s, %s)
-        RETURNING project_id
+            INSERT INTO projects (
+                project_name, project_code, client_name, 
+                start_date, end_date, version, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING project_id
         """
         
         self.cursor.execute(query, (
@@ -203,7 +207,8 @@ class BoQDatabase:
             project_info.get('client_name'),
             start_date,
             end_date,
-            datetime.now()
+            1,  # version
+            'system'  # created_by
         ))
         
         project_id = self.cursor.fetchone()[0]
@@ -211,38 +216,47 @@ class BoQDatabase:
         return project_id
     
     def insert_location(self, project_id: int, location_info: Dict) -> int:
+        """Insert location - matches schema with created_by"""
+        # Schema: project_id, location_name, address, latitude, longitude, created_by
+        # created_at and updated_at have DEFAULT NOW()
         query = """
-        INSERT INTO locations (
-            project_id, location_name, address, created_at
-        ) VALUES (%s, %s, %s, %s)
-        RETURNING location_id
+            INSERT INTO locations (
+                project_id, location_name, address, created_by
+            ) VALUES (%s, %s, %s, %s)
+            RETURNING location_id
         """
         
         self.cursor.execute(query, (
             project_id,
-            location_info.get('location'),
-            location_info.get('address'),
-            datetime.now()
+            location_info.get('location', 'Unknown'),
+            location_info.get('location', 'Unknown'),
+            'system'  # created_by
         ))
         
         location_id = self.cursor.fetchone()[0]
         self.conn.commit()
         return location_id
     
-    def insert_tbe_boq_file(self, project_id: int, boq_name: str, notes: str = None) -> int:
+    def insert_tbe_boq_file(self, project_id: int, file_name: str, file_path: str) -> int:
+        """Insert to-be-estimated BOQ file - matches schema"""
+        # Schema: project_id, file_name, file_path, file_type, version, is_active, created_by
+        # created_at and updated_at have DEFAULT NOW()
         query = """
-        INSERT INTO to_be_estimated_boq_files (
-            project_id, boq_name, created_at, updated_at, notes
-        ) VALUES (%s, %s, %s, %s, %s)
-        RETURNING boq_id
+            INSERT INTO to_be_estimated_boq_files (
+                project_id, file_name, file_path, file_type,
+                version, is_active, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING boq_id
         """
         
         self.cursor.execute(query, (
             project_id,
-            boq_name,
-            datetime.now(),
-            datetime.now(),
-            notes
+            file_name,
+            file_path,
+            'xlsx',
+            1,  # version
+            True,  # is_active
+            'system'  # created_by
         ))
         
         boq_id = self.cursor.fetchone()[0]
@@ -250,129 +264,130 @@ class BoQDatabase:
         return boq_id
     
     def insert_tbe_items_batch(self, boq_id: int, location_id: int, items: List[Dict]):
+        """Batch insert to-be-estimated items - matches schema (no pricing)"""
         if not items:
             return
         
-        query = """
-        INSERT INTO to_be_estimated_boq_items (
-            boq_id, item_code, item_description, unit_of_measurement,
-            quantity, location_id, created_at, updated_at
-        ) VALUES %s
-        """
-        
-        values = []
-        for item in items:
-            values.append((
+        # Schema: boq_id, item_code, item_description, unit_of_measurement,
+        #         quantity, location_id, created_by
+        # created_at and updated_at have DEFAULT NOW()
+        items_data = [
+            (
                 boq_id,
                 item.get('item_code'),
-                item['item_description'],
-                item['unit_of_measurement'],
-                item['quantity'],
+                item.get('item_description'),
+                item.get('unit_of_measurement'),
+                item.get('quantity'),
                 location_id,
-                datetime.now(),
-                datetime.now()
-            ))
+                'system'  # created_by
+            )
+            for item in items
+        ]
         
-        try:
-            execute_values(self.cursor, query, values)
-            self.conn.commit()
-            print(f"✓ Inserted {len(values)} items into to_be_estimated_boq_items")
-        except Exception as e:
-            self.conn.rollback()
-            print(f"✗ Error inserting items: {e}")
-            raise
+        query = """
+            INSERT INTO to_be_estimated_boq_items (
+                boq_id, item_code, item_description, unit_of_measurement,
+                quantity, location_id, created_by
+            ) VALUES %s
+        """
+        
+        execute_values(self.cursor, query, items_data)
+        self.conn.commit()
+    
+    def get_tbe_boq_summary(self, boq_id: int) -> Dict:
+        """Get summary of to-be-estimated BOQ"""
+        query = """
+            SELECT COUNT(*) as item_count
+            FROM to_be_estimated_boq_items
+            WHERE boq_id = %s
+        """
+        
+        self.cursor.execute(query, (boq_id,))
+        result = self.cursor.fetchone()
+        
+        return {
+            'item_count': result[0]
+        }
 
 
 class GeminiAgentSystem:
-    """Gemini Agent for BoQ extraction"""
+    """Gemini agent for intelligent extraction"""
     
     def __init__(self):
         api_key = os.getenv('GEMINI_API_KEY')
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not set")
+            raise ValueError("GEMINI_API_KEY not found")
         
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
     
     def extract_project_info(self, text: str) -> Dict:
-        prompt = f"""
-        Extract project information from this BoQ document.
-        Return ONLY a JSON object:
-        - project_name: string
-        - project_code: string (generate if not found: PROJ-YYYY-XXX)
-        - year: string (e.g., "2024" or "2024-2025")
-        - location: string
-        - client_name: string (optional)
-        
-        Text:
-        {text[:2000]}
-        
-        Return only valid JSON.
-        """
-        
+        """Extract project information using Gemini"""
+        prompt = f"""Extract project information from this text.
+
+Text:
+{text}
+
+Return JSON with:
+- project_name: string
+- project_code: string (or generate one)
+- year: string
+- location: string
+- client_name: string or null
+
+Return ONLY valid JSON."""
+
         try:
             response = self.model.generate_content(prompt)
             result_text = response.text.strip()
             
-            if '```json' in result_text:
-                result_text = result_text.split('```json')[1].split('```')[0].strip()
-            elif '```' in result_text:
-                result_text = result_text.split('```')[1].split('```')[0].strip()
+            if result_text.startswith('```json'):
+                result_text = result_text[7:]
+            if result_text.startswith('```'):
+                result_text = result_text[3:]
+            if result_text.endswith('```'):
+                result_text = result_text[:-3]
+            result_text = result_text.strip()
             
             return json.loads(result_text)
         except Exception as e:
             print(f"  Warning: Gemini extraction failed: {e}")
-            return None
+            return {}
     
     def identify_columns(self, columns: List[str]) -> Dict:
-        named_columns = [col for col in columns if not str(col).startswith('Unnamed')]
+        """Identify column mappings using Gemini"""
+        columns_str = ', '.join([f'"{col}"' for col in columns])
         
-        prompt = f"""
-        Analyze these Excel columns and map to BoQ fields (no pricing):
-        
-        Columns: {columns}
-        Named: {named_columns}
-        
-        Map to:
-        - item_code: Serial/item number
-        - description: Item description
-        - quantity: Quantity
-        - unit: Unit of measurement
-        
-        Return ONLY JSON:
-        {{
-            "item_code": "column_name_or_null",
-            "description": "column_name_or_null",
-            "quantity": "column_name_or_null",
-            "unit": "column_name_or_null"
-        }}
-        """
-        
+        prompt = f"""Map these columns to BOQ fields:
+Columns: {columns_str}
+
+Map to: item_code, description, quantity, unit
+
+Return JSON mapping field to column name. Use null if not found.
+
+Return ONLY valid JSON."""
+
         try:
             response = self.model.generate_content(prompt)
             result_text = response.text.strip()
             
-            if '```json' in result_text:
-                result_text = result_text.split('```json')[1].split('```')[0].strip()
-            elif '```' in result_text:
-                result_text = result_text.split('```')[1].split('```')[0].strip()
+            if result_text.startswith('```json'):
+                result_text = result_text[7:]
+            if result_text.startswith('```'):
+                result_text = result_text[3:]
+            if result_text.endswith('```'):
+                result_text = result_text[:-3]
+            result_text = result_text.strip()
             
-            result = json.loads(result_text)
-            
-            valid_result = {}
-            for key, value in result.items():
-                if value and value in columns:
-                    valid_result[key] = value
-                else:
-                    valid_result[key] = None
-            
-            return valid_result
+            return json.loads(result_text)
         except Exception as e:
-            print(f"  Warning: Gemini column identification failed: {e}")
-            return None
+            print(f"  Warning: Column identification failed: {e}")
+            return {}
 
 
 def extract_project_info_hybrid(df: pd.DataFrame, agent_system: GeminiAgentSystem) -> Dict:
+    """Extract project information using hybrid approach"""
+    
     project_info = {
         'project_name': None,
         'project_code': None,
@@ -381,6 +396,7 @@ def extract_project_info_hybrid(df: pd.DataFrame, agent_system: GeminiAgentSyste
         'client_name': None
     }
     
+    # Pattern matching first
     for idx, row in df.head(20).iterrows():
         for col in df.columns:
             cell_value = str(row[col]).strip() if pd.notna(row[col]) else ""
@@ -404,6 +420,7 @@ def extract_project_info_hybrid(df: pd.DataFrame, agent_system: GeminiAgentSyste
                 if year_match:
                     project_info['year'] = year_match.group()
     
+    # Use Gemini if needed
     if not project_info['project_name'] or not project_info['location']:
         text = df.head(20).to_string()
         gemini_result = agent_system.extract_project_info(text)
@@ -413,12 +430,13 @@ def extract_project_info_hybrid(df: pd.DataFrame, agent_system: GeminiAgentSyste
                 if not project_info[key] and gemini_result.get(key):
                     project_info[key] = gemini_result[key]
     
+    # Defaults
     if not project_info['project_name']:
-        project_info['project_name'] = f"Project {datetime.now().strftime('%Y%m%d')}"
+        project_info['project_name'] = f"TBE Project {datetime.now().strftime('%Y%m%d')}"
     
     if not project_info['project_code']:
         year = project_info.get('year', datetime.now().year)
-        project_info['project_code'] = f"PROJ-{year}-{datetime.now().strftime('%m%d%H%M')}"
+        project_info['project_code'] = f"TBE-{year}-{datetime.now().strftime('%m%d%H%M')}"
     
     if not project_info['year']:
         project_info['year'] = str(datetime.now().year)
@@ -431,6 +449,7 @@ def extract_project_info_hybrid(df: pd.DataFrame, agent_system: GeminiAgentSyste
 
 def extract_boq_items_hybrid(df: pd.DataFrame, agent_system: GeminiAgentSystem,
                              use_parallel: bool = True, max_workers: int = 4) -> List[Dict]:
+    """Extract BOQ items (quantity only, no pricing)"""
     print(f"  Analyzing DataFrame: {len(df)} rows, {len(df.columns)} columns")
     start_time = time.time()
     
@@ -495,10 +514,12 @@ def extract_boq_items_hybrid(df: pd.DataFrame, agent_system: GeminiAgentSystem,
 def process_tbe_boq_file(file_path: str, use_parallel: bool = True, max_workers: int = 4):
     """Process to-be-estimated BoQ file"""
     
-    print(f"\n{'='*60}")
-    print(f"Processing: {Path(file_path).name}")
-    print(f"Mode: To-Be-Estimated (No Pricing)")
-    print(f"{'='*60}\n")
+    print(f"\n{'='*70}")
+    print(f"TO-BE-ESTIMATED BOQ PROCESSOR")
+    print(f"{'='*70}")
+    print(f"File: {Path(file_path).name}")
+    print(f"Mode: Quantity Only (No Pricing)")
+    print(f"{'='*70}\n")
     
     start_time = time.time()
     
@@ -507,63 +528,86 @@ def process_tbe_boq_file(file_path: str, use_parallel: bool = True, max_workers:
     db.connect()
     
     try:
-        print("Step 1: Reading Excel file...")
+        # Step 1: Read file
+        print("📖 Step 1: Reading Excel file...")
         excel_file = pd.ExcelFile(file_path)
         sheets = {name: pd.read_excel(file_path, sheet_name=name) for name in excel_file.sheet_names}
-        print(f"✓ Read {len(sheets)} sheets")
+        print(f"   ✓ Read {len(sheets)} sheets: {', '.join(sheets.keys())}\n")
         
-        print("\nStep 2: Extracting project information...")
+        # Step 2: Extract project info
+        print("🔍 Step 2: Extracting project information...")
         first_sheet = list(sheets.values())[0]
         project_info = extract_project_info_hybrid(first_sheet, agent_system)
-        print(f"✓ Project: {project_info['project_name']}")
-        print(f"  Code: {project_info['project_code']}")
-        print(f"  Location: {project_info['location']}")
+        print(f"   ✓ Project: {project_info['project_name']}")
+        print(f"   ✓ Code: {project_info['project_code']}")
+        print(f"   ✓ Location: {project_info['location']}\n")
         
-        print("\nStep 3: Inserting project...")
+        # Step 3: Insert project
+        print("💾 Step 3: Inserting project...")
         project_id = db.insert_project(project_info)
-        print(f"✓ Project ID: {project_id}")
+        print(f"   ✓ Project ID: {project_id}\n")
         
-        print("\nStep 4: Inserting location...")
+        # Step 4: Insert location
+        print("💾 Step 4: Inserting location...")
         location_id = db.insert_location(project_id, project_info)
-        print(f"✓ Location ID: {location_id}")
+        print(f"   ✓ Location ID: {location_id}\n")
         
-        print("\nStep 5: Creating to-be-estimated BoQ file record...")
-        boq_name = Path(file_path).stem
-        boq_id = db.insert_tbe_boq_file(
-            project_id, 
-            boq_name,
-            notes=f"To-be-estimated BoQ uploaded on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
-        print(f"✓ BoQ ID: {boq_id}")
+        # Step 5: Insert file
+        print("💾 Step 5: Creating to-be-estimated BOQ file record...")
+        boq_id = db.insert_tbe_boq_file(project_id, Path(file_path).name, file_path)
+        print(f"   ✓ BOQ ID: {boq_id}\n")
         
-        print("\nStep 6: Extracting BoQ items (quantities only)...")
+        # Step 6: Extract items
+        print("🔍 Step 6: Extracting BOQ items (quantities only)...")
         all_items = []
         
+        skip_keywords = ['summary', 'assumption', 'note', 'index', 'cover']
+        
         for sheet_name, sheet_df in sheets.items():
-            print(f"\n  Processing sheet: {sheet_name}")
+            if any(kw in sheet_name.lower() for kw in skip_keywords):
+                print(f"   ⊗ Skipping: {sheet_name}")
+                continue
+            
+            if len(sheet_df) < 5 or len(sheet_df.columns) < 3:
+                print(f"   ⊗ Skipping: {sheet_name} (too small)")
+                continue
+            
+            print(f"\n   📄 Processing: {sheet_name}")
             items = extract_boq_items_hybrid(sheet_df, agent_system, use_parallel, max_workers)
             all_items.extend(items)
         
-        print(f"\nStep 7: Inserting {len(all_items)} items...")
+        # Step 7: Insert items
+        print(f"\n💾 Step 7: Inserting {len(all_items)} items...")
         db.insert_tbe_items_batch(boq_id, location_id, all_items)
+        print(f"   ✓ Inserted {len(all_items)} items\n")
+        
+        # Step 8: Get summary
+        print("📊 Step 8: Fetching summary...")
+        summary = db.get_tbe_boq_summary(boq_id)
         
         elapsed_total = time.time() - start_time
-        print(f"\n{'='*60}")
-        print(f"✓ Processing Complete!")
-        print(f"{'='*60}")
-        print(f"Project ID: {project_id}")
-        print(f"Location ID: {location_id}")
-        print(f"BoQ ID: {boq_id}")
-        print(f"Total Items: {len(all_items)}")
+        
+        print(f"\n{'='*70}")
+        print(f"✓ PROCESSING COMPLETE")
+        print(f"{'='*70}")
+        print(f"Project ID:      {project_id}")
+        print(f"Location ID:     {location_id}")
+        print(f"BOQ ID:          {boq_id}")
+        print(f"Total Items:     {summary['item_count']}")
         print(f"Processing Time: {elapsed_total:.2f}s")
-        print(f"{'='*60}\n")
+        print(f"{'='*70}\n")
+        
+        print("📝 Next Steps:")
+        print("   1. Use semantic search to find similar items from store_boq_items")
+        print("   2. Apply rates to these items")
+        print("   3. Convert to store_boq_items once estimated\n")
         
         return {
             'success': True,
             'project_id': project_id,
             'location_id': location_id,
             'boq_id': boq_id,
-            'total_items': len(all_items),
+            'total_items': summary['item_count'],
             'processing_time': elapsed_total
         }
         
@@ -596,9 +640,9 @@ def main():
     result = process_tbe_boq_file(file_path, use_parallel=True, max_workers=4)
     
     if result['success']:
-        print("\n✓ Success!")
+        print("✅ SUCCESS!")
     else:
-        print(f"\n✗ Failed: {result.get('error')}")
+        print(f"✗ Failed: {result.get('error')}")
 
 
 if __name__ == "__main__":

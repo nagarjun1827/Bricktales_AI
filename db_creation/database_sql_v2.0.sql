@@ -21,16 +21,19 @@ CREATE TABLE company (
 -- =====================================================
 CREATE TABLE projects (
     project_id SERIAL PRIMARY KEY,
-    project_name TEXT NOT NULL,
-    project_code VARCHAR(50) UNIQUE NOT NULL,
-    cmp_id INT REFERENCES company(cmp_id) ON DELETE CASCADE,
+    project_name TEXT,
+    project_code VARCHAR(50),
+    client_id INT REFERENCES company(cmp_id) ON DELETE CASCADE,
     client_name TEXT,
     start_date DATE,
     end_date DATE,
+    version INT DEFAULT 1,
+    created_by TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_by TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     project_name_embedding vector(768),
-    embedding_model VARCHAR(100),
-    embedding_generated_at TIMESTAMP WITH TIME ZONE
+    embedding_generated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX idx_projects_name_embedding
@@ -48,11 +51,14 @@ CREATE TABLE locations (
     address TEXT,
     latitude DECIMAL(9,6),
     longitude DECIMAL(9,6),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_by TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_by TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- =====================================================
--- BOQ_FILES TABLE
+-- STORE_BOQ_FILES TABLE
 -- =====================================================
 CREATE TABLE store_boq_files (
     boq_id SERIAL PRIMARY KEY,
@@ -60,15 +66,16 @@ CREATE TABLE store_boq_files (
     file_name TEXT NOT NULL,
     file_path TEXT,
     file_type VARCHAR(20),
-    upload_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    uploaded_by TEXT,
     version INT DEFAULT 1,
     is_active BOOLEAN DEFAULT TRUE,
-    notes TEXT
+    created_by TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_by TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() -- ← removed trailing comma
 );
 
 -- =====================================================
--- BOQ_ITEMS TABLE (FINALIZED/ESTIMATED)
+-- STORE_BOQ_ITEMS TABLE
 -- =====================================================
 CREATE TABLE store_boq_items (
     item_id SERIAL PRIMARY KEY,
@@ -83,10 +90,11 @@ CREATE TABLE store_boq_items (
     labour_amount DECIMAL(18,2) GENERATED ALWAYS AS (quantity * labour_unit_rate) STORED,
     total_amount DECIMAL(18,2) GENERATED ALWAYS AS ((quantity * supply_unit_rate) + (quantity * labour_unit_rate)) STORED,
     location_id INT REFERENCES locations(location_id),
+    created_by TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_by TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     description_embedding vector(768),
-    embedding_model VARCHAR(100),
     embedding_generated_at TIMESTAMP WITH TIME ZONE
 );
 
@@ -96,21 +104,24 @@ USING ivfflat (description_embedding vector_cosine_ops)
 WITH (lists = 100);
 
 -- =====================================================
--- TO_BE_ESTIMATED_BOQ FILES TABLE
+-- TO_BE_ESTIMATED_BOQ_FILES TABLE
 -- =====================================================
 CREATE TABLE to_be_estimated_boq_files (
     boq_id SERIAL PRIMARY KEY,
     project_id INT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
-    boq_name TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_path TEXT,
+    file_type VARCHAR(20),
+    version INT DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    notes TEXT,
-    embedding_model VARCHAR(100),
-    embedding_generated_at TIMESTAMP WITH TIME ZONE
+    updated_by TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() -- ← removed trailing comma
 );
 
 -- =====================================================
--- TO_BE_ESTIMATED_BOQ ITEMS TABLE
+-- TO_BE_ESTIMATED_BOQ_ITEMS TABLE
 -- =====================================================
 CREATE TABLE to_be_estimated_boq_items (
     item_id SERIAL PRIMARY KEY,
@@ -120,10 +131,11 @@ CREATE TABLE to_be_estimated_boq_items (
     unit_of_measurement VARCHAR(20) NOT NULL,
     quantity DECIMAL(18,3) NOT NULL CHECK (quantity >= 0),
     location_id INT REFERENCES locations(location_id),
+    created_by TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_by TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     description_embedding vector(768),
-    embedding_model VARCHAR(100),
     embedding_generated_at TIMESTAMP WITH TIME ZONE
 );
 

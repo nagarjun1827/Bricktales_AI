@@ -174,16 +174,14 @@ class GeminiVectorizerParallel:
         cursor = conn.cursor()
         
         try:
-            # Simpler approach: Update each item individually within a transaction
-            # This is still efficient because it's within one transaction
+            # Update each item individually within a transaction
             for item_id, embedding_str in results:
                 cursor.execute("""
                     UPDATE store_boq_items 
-                    SET description_embedding = %s::vector,
-                        embedding_model = %s,
+                    SET description_embedding = %s::vector,                        
                         embedding_generated_at = NOW()
                     WHERE item_id = %s
-                """, (embedding_str, self.model_name, item_id))
+                """, (embedding_str, item_id))
             
             conn.commit()
             
@@ -217,9 +215,8 @@ class GeminiVectorizerParallel:
         where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
         
         query = f"""
-            SELECT item_id, item_code, item_description, 
-                   unit_of_measurement, quantity
-            FROM store_boq_items 
+            SELECT item_id, item_code, item_description, unit_of_measurement, quantity
+            FROM store_boq_items
             {where_clause}
             ORDER BY item_id
         """

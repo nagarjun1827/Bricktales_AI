@@ -37,7 +37,6 @@ CREATE TABLE boq_files (
     uploaded_by TEXT,
     version INT DEFAULT 1,
     is_active BOOLEAN DEFAULT TRUE,
-    notes TEXT
 );
 
 -- =====================================================
