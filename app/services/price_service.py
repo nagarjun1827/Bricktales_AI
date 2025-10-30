@@ -23,7 +23,7 @@ class PriceService:
     def fetch_prices_for_boq(
         self,
         boq_id: int,
-        top_k: int = 5,
+        top_k: int = 1,
         min_similarity: float = 0.5
     ) -> Dict[str, Any]:
         """Fetch price recommendations for all items in a BOQ"""
