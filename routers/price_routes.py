@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
 from fastapi.responses import StreamingResponse
-from app.models.price_dto import (
+from models.price_dto import (
     PriceFetchRequest,
     PriceFetchStatus,
     PriceFetchResult,
     LineItemPriceRecommendation
 )
-from app.services.price_fetcher import PriceFetcher
-from app.tasks.background_tasks import create_task, get_task, processing_tasks
+from services.price_fetcher import PriceFetcher
+from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
 import csv
 import io

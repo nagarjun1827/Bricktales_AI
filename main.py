@@ -2,9 +2,9 @@
 BrickTales BOQ Processing API
 """
 from fastapi import FastAPI
-from app.api.v1.store_boq_routes import router as store_boq_router
-from app.api.v1.tbe_boq_routes import router as tbe_boq_router
-from app.api.v1.price_routes import router as price_router
+from routers.price_routes import router as price_router
+from routers.tbe_boq_routes import router as tbe_boq_router
+from routers.store_boq_routes import router as store_boq_router
 
 app = FastAPI(
     title="BrickTales BOQ API",

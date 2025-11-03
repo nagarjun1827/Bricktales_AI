@@ -4,8 +4,8 @@ Repository for store BOQ database operations.
 import psycopg2
 from psycopg2.extras import execute_values
 from typing import List, Dict
-from app.models.domain import ProjectInfo, LocationInfo, BOQFileInfo, BOQItem
-from app.core.settings import settings
+from models.domain import ProjectInfo, LocationInfo, BOQFileInfo, BOQItem
+from core.settings import settings
 
 
 class BOQItemWithEmbedding:

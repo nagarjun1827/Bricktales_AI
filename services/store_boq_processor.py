@@ -8,15 +8,15 @@ from typing import Dict, Any
 import pandas as pd
 import google.generativeai as genai
 
-from app.models.domain import ProjectInfo, LocationInfo, BOQFileInfo
-from app.repositories.store_boq_repository import StoreBOQRepository
-from app.agents.gemini_tools import (
+from models.domain import ProjectInfo, LocationInfo, BOQFileInfo
+from repositories.store_boq_repository import StoreBOQRepository
+from agents.gemini_tools import (
     AnalyzeSheetStructureTool,
     ExtractProjectInfoTool,
     ExtractLocationInfoTool,
 )
-from app.agents.item_extractor import ItemExtractorAgent
-from app.core.settings import settings
+from agents.item_extractor import ItemExtractorAgent
+from core.settings import settings
 from datetime import datetime
 
 

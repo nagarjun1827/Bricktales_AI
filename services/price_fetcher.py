@@ -7,9 +7,9 @@ from decimal import Decimal
 import google.generativeai as genai
 from statistics import median
 
-from app.core.settings import settings
-from app.repositories.price_repository import PriceRepository
-from app.models.price_dto import PriceStatistics, SimilarItemDetail, LineItemPriceRecommendation
+from core.settings import settings
+from repositories.price_repository import PriceRepository
+from models.price_dto import PriceStatistics, SimilarItemDetail, LineItemPriceRecommendation
 
 
 class PriceFetcher:

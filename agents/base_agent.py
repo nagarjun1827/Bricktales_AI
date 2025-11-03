@@ -1,7 +1,7 @@
 import os
 import re
 import google.generativeai as genai
-from app.core.settings import settings
+from core.settings import settings
 
 class BaseAgent:
     def __init__(self, model_name: str = 'gemini-2.5-flash'):

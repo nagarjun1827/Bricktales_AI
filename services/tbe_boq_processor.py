@@ -10,10 +10,10 @@ from datetime import datetime
 import pandas as pd
 import google.generativeai as genai
 
-from app.core.settings import settings
-from app.models.tbe_domain import TBEProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
-from app.repositories.tbe_boq_repository import TBEBOQRepository
-from app.services.pattern_matcher import PatternMatcher
+from core.settings import settings
+from models.tbe_domain import TBEProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
+from repositories.tbe_boq_repository import TBEBOQRepository
+from services.pattern_matcher import PatternMatcher
 
 
 class GeminiExtractor:

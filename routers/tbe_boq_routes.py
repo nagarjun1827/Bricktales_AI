@@ -1,8 +1,8 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Query
-from app.models.tbe_dto import TBEProcessingStatus, TBEProcessingResult
-from app.services.tbe_boq_processor import TBEBOQProcessor
-from app.tasks.background_tasks import create_task, get_task, processing_tasks
-from app.core.settings import settings
+from models.tbe_dto import TBEProcessingStatus, TBEProcessingResult
+from services.tbe_boq_processor import TBEBOQProcessor
+from tasks.background_tasks import create_task, get_task, processing_tasks
+from core.settings import settings
 from pathlib import Path
 import uuid
 import shutil

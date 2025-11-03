@@ -2,10 +2,10 @@
 API routes for store BOQ processing.
 """
 from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Form
-from app.models.dto import ProcessingStatus, ProcessingResult
-from app.services.store_boq_processor import StoreBOQProcessor
-from app.tasks.background_tasks import create_task, get_task, processing_tasks
-from app.core.settings import settings
+from models.dto import ProcessingStatus, ProcessingResult
+from services.store_boq_processor import StoreBOQProcessor
+from tasks.background_tasks import create_task, get_task, processing_tasks
+from core.settings import settings
 from pathlib import Path
 import uuid
 import shutil

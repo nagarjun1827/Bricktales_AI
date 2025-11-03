@@ -1,8 +1,8 @@
 import psycopg2
 from psycopg2.extras import execute_values
 from typing import List, Dict
-from app.models.tbe_domain import TBEProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
-from app.core.settings import settings
+from models.tbe_domain import TBEProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
+from core.settings import settings
 
 class TBEBOQRepository:
     """Repository for To-Be-Estimated BOQ operations"""
