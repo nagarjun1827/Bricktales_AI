@@ -6,8 +6,8 @@ from app.models.price_dto import (
     PriceFetchResult,
     LineItemPriceRecommendation
 )
-from app.services.price_service import PriceService
-from app.tasks.background import create_task, get_task, processing_tasks
+from app.services.price_fetcher import PriceFetcher
+from app.tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
 import csv
 import io
@@ -21,7 +21,7 @@ def background_price_fetch(task_id: str, boq_id: int, top_k: int, min_similarity
         processing_tasks[task_id]["status"] = "processing"
         processing_tasks[task_id]["message"] = "Fetching prices..."
 
-        service = PriceService()
+        service = PriceFetcher()
         result = service.fetch_prices_for_boq(
             boq_id=boq_id,
             top_k=top_k,
@@ -214,7 +214,7 @@ async def get_recommendations_sync(
     **For large BOQs, use /fetch endpoint instead (background processing)**
     """
     try:
-        service = PriceService()
+        service = PriceFetcher()
         result = service.fetch_prices_for_boq(
             boq_id=boq_id,
             top_k=top_k,

@@ -1,6 +1,6 @@
 import psycopg2
 from typing import List, Dict, Optional, Tuple
-from app.core.config import settings
+from app.core.settings import settings
 
 class PriceRepository:
     """Repository for price fetching operations"""

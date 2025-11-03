@@ -1,8 +1,8 @@
 from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Query
 from app.models.tbe_dto import TBEProcessingStatus, TBEProcessingResult
-from app.services.tbe_service import TBEService
-from app.tasks.background import create_task, get_task, processing_tasks
-from app.core.config import settings
+from app.services.tbe_boq_processor import TBEBOQProcessor
+from app.tasks.background_tasks import create_task, get_task, processing_tasks
+from app.core.settings import settings
 from pathlib import Path
 import uuid
 import shutil
@@ -19,7 +19,7 @@ def background_tbe_process(task_id: str, file_path: str, uploaded_by: str):
         processing_tasks[task_id]["status"] = "processing"
         processing_tasks[task_id]["message"] = "Processing TBE BOQ file..."
 
-        service = TBEService()
+        service = TBEBOQProcessor()
         result = service.process_file(file_path, uploaded_by)
 
         processing_tasks[task_id].update({
@@ -147,7 +147,7 @@ async def get_tbe_items(
     - **NO pricing fields** (supply_unit_rate, labour_unit_rate are not in TBE)
     """
     try:
-        service = TBEService()
+        service = TBEBOQProcessor()
         result = service.get_tbe_items(boq_id, limit, offset)
         
         if not result["success"]:
@@ -171,7 +171,7 @@ async def get_tbe_summary(boq_id: int):
     Note: TBE BOQs don't have pricing, so no amount calculations are included.
     """
     try:
-        service = TBEService()
+        service = TBEBOQProcessor()
         summary = service.repo.get_tbe_boq_summary(boq_id)
         
         return {

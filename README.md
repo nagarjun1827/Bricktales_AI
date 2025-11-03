@@ -1,4 +1,4 @@
-# BrickTales AI BOQ Processing System
+# QuoCo AI BOQ Processing System
 
 A comprehensive AI-powered Bill of Quantities (BOQ) processing system with semantic search, price estimation, and intelligent data extraction capabilities.
 
