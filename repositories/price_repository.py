@@ -60,7 +60,8 @@ class PriceRepository:
                 1 - (bi.description_embedding <=> %s::vector) as similarity
             FROM store_boq_items bi
             JOIN store_boq_files bf ON bi.boq_id = bf.boq_id
-            JOIN projects p ON bf.project_id = p.project_id
+            JOIN store_boq_projects sbp ON bf.store_project_id = sbp.store_project_id
+            JOIN projects p ON sbp.project_id = p.project_id
             WHERE bi.description_embedding IS NOT NULL
               AND bi.unit_of_measurement = %s
               AND (1 - (bi.description_embedding <=> %s::vector)) >= %s
@@ -103,7 +104,8 @@ class PriceRepository:
                 p.project_name,
                 p.project_code
             FROM store_boq_files bf
-            JOIN projects p ON bf.project_id = p.project_id
+            JOIN store_boq_projects sbp ON bf.store_project_id = sbp.store_project_id
+            JOIN projects p ON sbp.project_id = p.project_id
             WHERE bf.boq_id = %s
         """
         

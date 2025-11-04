@@ -1,7 +1,7 @@
 import psycopg2
 from psycopg2.extras import execute_values
 from typing import List, Dict
-from models.tbe_domain import TBEProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
+from models.tbe_domain import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
 from core.settings import settings
 
 class TBEBOQRepository:
@@ -23,15 +23,16 @@ class TBEBOQRepository:
         """Insert project record"""
         query = """
             INSERT INTO projects (
-                project_name, project_code, client_name,
+                project_name, project_code, project_type, client_name,
                 start_date, end_date, version, created_by
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING project_id
         """
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(query, (
                 project_info.project_name,
                 project_info.project_code,
+                project_info.project_type,
                 project_info.client_name,
                 project_info.start_date,
                 project_info.end_date,
@@ -42,18 +43,43 @@ class TBEBOQRepository:
             conn.commit()
             return project_id
 
+    def insert_estimate_boq_project(self, estimate_project_info: EstimateBOQProjectInfo) -> int:
+        """Insert estimate BOQ project."""
+        query = """
+            INSERT INTO estimate_boq_projects (
+                project_id, estimate_project_name, estimate_project_code,
+                estimation_status, estimated_value, estimated_by,
+                estimated_at, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING estimate_project_id
+        """
+        with self._get_connection() as conn, conn.cursor() as cur:
+            cur.execute(query, (
+                estimate_project_info.project_id,
+                estimate_project_info.estimate_project_name,
+                estimate_project_info.estimate_project_code,
+                estimate_project_info.estimation_status,
+                estimate_project_info.estimated_value,
+                estimate_project_info.estimated_by,
+                estimate_project_info.estimated_at,
+                estimate_project_info.created_by,
+            ))
+            estimate_project_id = cur.fetchone()[0]
+            conn.commit()
+            return estimate_project_id
+
     def insert_location(self, location_info: TBELocationInfo) -> int:
         """Insert location record"""
         query = """
-            INSERT INTO locations (
-                project_id, location_name, address, 
+            INSERT INTO estimate_boq_locations (
+                estimate_project_id, location_name, address, 
                 latitude, longitude, created_by
             ) VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING location_id
         """
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(query, (
-                location_info.project_id,
+                location_info.estimate_project_id,
                 location_info.location_name,
                 location_info.address,
                 location_info.latitude,
@@ -67,15 +93,15 @@ class TBEBOQRepository:
     def insert_tbe_boq_file(self, file_info: TBEBOQFileInfo) -> int:
         """Insert to-be-estimated BOQ file record"""
         query = """
-            INSERT INTO to_be_estimated_boq_files (
-                project_id, file_name, file_path, file_type,
+            INSERT INTO estimate_boq_files (
+                estimate_project_id, file_name, file_path, file_type,
                 version, is_active, created_by
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING boq_id
         """
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(query, (
-                file_info.project_id,
+                file_info.estimate_project_id,
                 file_info.file_name,
                 file_info.file_path,
                 file_info.file_type,
@@ -106,7 +132,7 @@ class TBEBOQRepository:
         ]
         
         query = """
-            INSERT INTO to_be_estimated_boq_items (
+            INSERT INTO estimate_boq_items (
                 boq_id, item_code, item_description, 
                 unit_of_measurement, quantity, 
                 location_id, created_by
@@ -121,7 +147,7 @@ class TBEBOQRepository:
         """Get summary of to-be-estimated BOQ"""
         query = """
             SELECT COUNT(*) as item_count
-            FROM to_be_estimated_boq_items
+            FROM estimate_boq_items
             WHERE boq_id = %s
         """
         
@@ -140,7 +166,7 @@ class TBEBOQRepository:
                 item_id, boq_id, item_code, item_description,
                 unit_of_measurement, quantity, location_id,
                 created_by, created_at, updated_at
-            FROM to_be_estimated_boq_items
+            FROM estimate_boq_items
             WHERE boq_id = %s
             ORDER BY item_id
             LIMIT %s OFFSET %s

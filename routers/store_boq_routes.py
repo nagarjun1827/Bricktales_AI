@@ -10,7 +10,7 @@ from pathlib import Path
 import uuid
 import shutil
 
-router = APIRouter(prefix="/store-boq", tags=["Store BOQ Processing"])
+router = APIRouter(prefix="/store-boq", tags=["Storage BOQ Processing"])
 
 UPLOAD_DIR = Path(settings.UPLOAD_DIR)
 UPLOAD_DIR.mkdir(exist_ok=True)

@@ -8,7 +8,7 @@ from typing import Dict, Any
 import pandas as pd
 import google.generativeai as genai
 
-from models.domain import ProjectInfo, LocationInfo, BOQFileInfo
+from models.domain import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo
 from repositories.store_boq_repository import StoreBOQRepository
 from agents.gemini_tools import (
     AnalyzeSheetStructureTool,
@@ -63,42 +63,45 @@ class StoreBOQProcessor:
             sheets = self._read_excel_file(file_path)
             print(f"   ✓ Read {len(sheets)} sheets\n")
 
-            # Step 2-5: Extract and save project/location
+            # Step 2-6: Extract and save project/store_project/location
             first_sheet = list(sheets.values())[0]
-            project_id, location_id = self._process_metadata(first_sheet, uploaded_by)
+            project_id, store_project_id, location_id = self._process_metadata(
+                first_sheet, uploaded_by
+            )
 
-            # Step 6: Create BOQ file record
-            print("💾 Step 6: Creating BOQ file record...")
-            boq_id = self._create_boq_file(project_id, file_path, uploaded_by)
+            # Step 7: Create BOQ file record
+            print("💾 Step 7: Creating BOQ file record...")
+            boq_id = self._create_boq_file(store_project_id, file_path, uploaded_by)
             print(f"   ✓ BOQ ID: {boq_id}\n")
 
-            # Step 7: Process sheets and extract items
-            print("📊 Step 7: Processing sheets and extracting items...")
+            # Step 8: Process sheets and extract items
+            print("📊 Step 8: Processing sheets and extracting items...")
             boq_sheets = self._filter_sheets(sheets)
             all_items = self._extract_all_items(boq_sheets, boq_id, location_id)
 
-            # Step 8: Insert items
-            print(f"\n💾 Step 8: Inserting {len(all_items)} items...")
+            # Step 9: Insert items
+            print(f"\n💾 Step 9: Inserting {len(all_items)} items...")
             self.repo.insert_boq_items_batch(all_items)
             print(f"   ✓ Items inserted\n")
 
-            # Step 9: Get totals
-            print("📊 Step 9: Calculating totals...")
+            # Step 10: Get totals
+            print("📊 Step 10: Calculating totals...")
             totals = self.repo.get_boq_totals(boq_id)
 
-            # Step 10: Generate embeddings
+            # Step 11: Generate embeddings
             embedding_result = self._generate_embeddings(boq_id, all_items)
 
             elapsed = time.time() - start_time
 
             self._print_summary(
-                project_id, location_id, boq_id, 
+                project_id, store_project_id, location_id, boq_id, 
                 totals, embedding_result, elapsed
             )
 
             return {
                 "success": True,
                 "project_id": project_id,
+                "store_project_id": store_project_id,
                 "boq_id": boq_id,
                 "total_items": totals["item_count"],
                 "total_supply": totals["total_supply"],
@@ -125,14 +128,14 @@ class StoreBOQProcessor:
         }
 
     def _process_metadata(self, first_sheet: pd.DataFrame, uploaded_by: str) -> tuple:
-        """Extract and save project and location metadata."""
+        """Extract and save project, store project, and location metadata."""
         print("🔍 Step 2: Extracting project information...")
         text_sample = self._extract_text(first_sheet, 50)
         
         # Extract project
         project_json = self.project_tool._run(text_sample)
         project_data = json.loads(project_json)
-        project_info = self._build_project_info(project_data)
+        project_info = self._build_project_info(project_data, uploaded_by)
         
         print(f"   ✓ Project: {project_info.project_name}")
         
@@ -141,25 +144,33 @@ class StoreBOQProcessor:
         project_id = self.repo.insert_project(project_info)
         print(f"   ✓ Project ID: {project_id}")
         
+        # Create store BOQ project
+        print("\n💾 Step 4: Creating store BOQ project...")
+        store_project_info = self._build_store_project_info(
+            project_id, project_data, uploaded_by
+        )
+        store_project_id = self.repo.insert_store_boq_project(store_project_info)
+        print(f"   ✓ Store Project ID: {store_project_id}")
+        
         # Extract location
-        print("\n🔍 Step 4: Extracting location...")
+        print("\n🔍 Step 5: Extracting location...")
         location_json = self.location_tool._run(text_sample)
         location_data = json.loads(location_json)
-        location_info = self._build_location_info(location_data, project_id)
+        location_info = self._build_location_info(location_data, store_project_id)
         
         print(f"   ✓ Location: {location_info.location_name}")
         
         # Insert location
-        print("\n💾 Step 5: Saving location...")
+        print("\n💾 Step 6: Saving location...")
         location_id = self.repo.insert_location(location_info)
         print(f"   ✓ Location ID: {location_id}\n")
         
-        return project_id, location_id
+        return project_id, store_project_id, location_id
 
-    def _create_boq_file(self, project_id: int, file_path: str, uploaded_by: str) -> int:
+    def _create_boq_file(self, store_project_id: int, file_path: str, uploaded_by: str) -> int:
         """Create BOQ file record."""
         file_info = BOQFileInfo(
-            project_id=project_id,
+            store_project_id=store_project_id,
             file_name=Path(file_path).name,
             file_path=file_path,
             created_by=uploaded_by,
@@ -299,7 +310,7 @@ class StoreBOQProcessor:
         }
 
     @staticmethod
-    def _build_project_info(data: dict) -> ProjectInfo:
+    def _build_project_info(data: dict, uploaded_by: str) -> ProjectInfo:
         """Build ProjectInfo from extracted data."""
         start_date = f"{data['start_year']}-01-01" if data.get('start_year') else None
         end_date = f"{data['end_year']}-12-31" if data.get('end_year') else (
@@ -309,13 +320,30 @@ class StoreBOQProcessor:
         return ProjectInfo(
             project_name=data.get("project_name", "BOQ Project"),
             project_code=data.get("project_code", f"PROJ-{datetime.now():%Y%m%d}"),
+            project_type="boq",
             client_name=data.get("client_name"),
             start_date=start_date,
             end_date=end_date,
+            created_by=uploaded_by,
         )
 
     @staticmethod
-    def _build_location_info(data: dict, project_id: int) -> LocationInfo:
+    def _build_store_project_info(
+        project_id: int, 
+        data: dict, 
+        uploaded_by: str
+    ) -> StoreBOQProjectInfo:
+        """Build StoreBOQProjectInfo from extracted data."""
+        project_name = data.get("project_name", "BOQ Project")
+        return StoreBOQProjectInfo(
+            project_id=project_id,
+            store_project_name=f"{project_name} - Store",
+            store_project_code=f"STORE-{datetime.now():%Y%m%d%H%M}",
+            created_by=uploaded_by,
+        )
+
+    @staticmethod
+    def _build_location_info(data: dict, store_project_id: int) -> LocationInfo:
         """Build LocationInfo from extracted data."""
         address_parts = [data.get("location_name", "Unknown")]
         if data.get("city"):
@@ -324,18 +352,22 @@ class StoreBOQProcessor:
             address_parts.append(data["state"])
             
         return LocationInfo(
-            project_id=project_id,
+            store_project_id=store_project_id,
             location_name=data.get("location_name", "Unknown"),
             address=", ".join(address_parts),
         )
 
     @staticmethod
-    def _print_summary(project_id, location_id, boq_id, totals, embedding_result, elapsed):
+    def _print_summary(
+        project_id, store_project_id, location_id, boq_id, 
+        totals, embedding_result, elapsed
+    ):
         """Print processing summary."""
         print(f"\n{'='*70}")
         print("✓ PROCESSING COMPLETE")
         print(f"{'='*70}")
         print(f"Project ID:           {project_id}")
+        print(f"Store Project ID:     {store_project_id}")
         print(f"Location ID:          {location_id}")
         print(f"BOQ File ID:          {boq_id}")
         print(f"Total Items:          {totals['item_count']}")

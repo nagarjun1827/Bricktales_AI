@@ -1,18 +1,22 @@
 """
-Service for processing To-Be-Estimated BOQ files (quantities only, no rates).
+Service for processing To-Be-Estimated BOQ files with automatic price fetching.
 """
 import time
 import re
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
+from decimal import Decimal
+from statistics import median
 import pandas as pd
 import google.generativeai as genai
 
 from core.settings import settings
-from models.tbe_domain import TBEProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
+from models.tbe_domain import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
+from models.tbe_dto import PriceStatistics, ItemWithPrice
 from repositories.tbe_boq_repository import TBEBOQRepository
+from repositories.price_repository import PriceRepository
 from services.pattern_matcher import PatternMatcher
 
 
@@ -61,22 +65,155 @@ Return JSON mapping."""
 
 
 class TBEBOQProcessor:
-    """Processes To-Be-Estimated BOQ files."""
+    """Processes To-Be-Estimated BOQ files with automatic price fetching."""
     
     def __init__(self):
         self.repo = TBEBOQRepository()
+        self.price_repo = PriceRepository()
         self.extractor = GeminiExtractor()
         self.pattern_matcher = PatternMatcher()
+        
+        # Configure Gemini for embeddings
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        self.embedding_model = "models/text-embedding-004"
     
-    def process_file(self, file_path: str, uploaded_by: str = "system") -> Dict[str, Any]:
-        """Process TBE BOQ file."""
-        print(f"\n{'='*70}")
-        print(f"TO-BE-ESTIMATED BOQ PROCESSOR")
-        print(f"{'='*70}")
-        print(f"File: {Path(file_path).name}\n")
+    def process_file(
+        self, 
+        file_path: str, 
+        uploaded_by: str = "system",
+        top_k: int = 5,
+        min_similarity: float = 0.5
+    ) -> Dict[str, Any]:
+        """
+        Process TBE BOQ file with automatic price fetching.
+        
+        Workflow:
+        1. Process file and extract items
+        2. Generate embeddings for items
+        3. Fetch prices using similarity search
+        4. Return complete results
+        """
+        print(f"\n{'='*80}")
+        print(f"🚀 TBE BOQ PROCESSOR WITH AUTOMATIC PRICE FETCHING")
+        print(f"{'='*80}")
+        print(f"File: {Path(file_path).name}")
+        print(f"Top K: {top_k}, Min Similarity: {min_similarity}\n")
         
         start_time = time.time()
         
+        try:
+            # STEP 1: Process TBE BOQ File
+            print("=" * 80)
+            print("STEP 1: PROCESSING TBE BOQ FILE")
+            print("=" * 80)
+            file_start = time.time()
+            
+            tbe_result = self._process_tbe_file(file_path, uploaded_by)
+            
+            if not tbe_result['success']:
+                return tbe_result
+            
+            file_time = time.time() - file_start
+            print(f"\n✓ File processing completed in {file_time:.2f}s\n")
+            
+            boq_id = tbe_result['boq_id']
+            project_id = tbe_result['project_id']
+            estimate_project_id = tbe_result['estimate_project_id']
+            location_id = tbe_result['location_id']
+            total_items = tbe_result['total_items']
+            
+            # STEP 2: Generate Embeddings for Items
+            print("=" * 80)
+            print("STEP 2: GENERATING EMBEDDINGS FOR ITEMS")
+            print("=" * 80)
+            embedding_start = time.time()
+            
+            embedding_result = self._generate_embeddings_for_items(boq_id)
+            
+            if not embedding_result['success']:
+                return {
+                    'success': False,
+                    'error': embedding_result['error'],
+                    'error_step': 'embedding_generation'
+                }
+            
+            embedding_time = time.time() - embedding_start
+            print(f"\n✓ Embedding generation completed in {embedding_time:.2f}s\n")
+            
+            # STEP 3: Fetch Prices Using Similarity Search
+            print("=" * 80)
+            print("STEP 3: FETCHING PRICES USING SIMILARITY SEARCH")
+            print("=" * 80)
+            price_start = time.time()
+            
+            price_result = self._fetch_prices_for_items(
+                boq_id, top_k, min_similarity
+            )
+            
+            if not price_result['success']:
+                return {
+                    'success': False,
+                    'error': price_result['error'],
+                    'error_step': 'price_fetching'
+                }
+            
+            price_time = time.time() - price_start
+            print(f"\n✓ Price fetching completed in {price_time:.2f}s\n")
+            
+            # Calculate totals
+            total_estimated_supply = sum(
+                item.estimated_supply_total for item in price_result['items']
+                if item.estimated_supply_total
+            )
+            total_estimated_labour = sum(
+                item.estimated_labour_total for item in price_result['items']
+                if item.estimated_labour_total
+            )
+            total_estimated_amount = sum(
+                item.estimated_total for item in price_result['items']
+                if item.estimated_total
+            )
+            
+            total_time = time.time() - start_time
+            
+            # Print final summary
+            self._print_final_summary(
+                project_id, estimate_project_id, location_id, boq_id,
+                total_items, price_result['items_with_prices'],
+                price_result['items_without_prices'],
+                total_estimated_supply, total_estimated_labour,
+                total_estimated_amount, file_time, embedding_time,
+                price_time, total_time
+            )
+            
+            return {
+                'success': True,
+                'project_id': project_id,
+                'estimate_project_id': estimate_project_id,
+                'location_id': location_id,
+                'boq_id': boq_id,
+                'total_items': total_items,
+                'items_with_prices': price_result['items_with_prices'],
+                'items_without_prices': price_result['items_without_prices'],
+                'total_estimated_supply': total_estimated_supply,
+                'total_estimated_labour': total_estimated_labour,
+                'total_estimated_amount': total_estimated_amount,
+                'items': price_result['items'],
+                'file_processing_time': file_time,
+                'embedding_generation_time': embedding_time,
+                'price_fetching_time': price_time,
+                'total_processing_time': total_time,
+                'message': 'TBE BOQ processed successfully with prices'
+            }
+            
+        except Exception as e:
+            print(f"\n✗ Error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'success': False, 'error': str(e)}
+    
+    def _process_tbe_file(self, file_path: str, uploaded_by: str) -> Dict[str, Any]:
+        """Process TBE BOQ file and extract items."""
         try:
             # Read file
             print("📖 Reading Excel file...")
@@ -85,11 +222,13 @@ class TBEBOQProcessor:
             
             # Extract metadata
             first_sheet = list(sheets.values())[0]
-            project_id, location_id = self._process_metadata(first_sheet, uploaded_by)
+            project_id, estimate_project_id, location_id = self._process_metadata(
+                first_sheet, uploaded_by
+            )
             
             # Create BOQ file
             print("💾 Creating TBE BOQ file record...")
-            boq_id = self._create_boq_file(project_id, file_path, uploaded_by)
+            boq_id = self._create_boq_file(estimate_project_id, file_path, uploaded_by)
             print(f"   ✓ BOQ ID: {boq_id}\n")
             
             # Extract items
@@ -108,24 +247,229 @@ class TBEBOQProcessor:
             
             # Summary
             summary = self.repo.get_tbe_boq_summary(boq_id)
-            elapsed = time.time() - start_time
-            
-            self._print_summary(project_id, location_id, boq_id, summary, elapsed)
             
             return {
                 'success': True,
                 'project_id': project_id,
+                'estimate_project_id': estimate_project_id,
                 'location_id': location_id,
                 'boq_id': boq_id,
-                'total_items': summary['item_count'],
-                'processing_time': elapsed,
+                'total_items': summary['item_count']
             }
             
         except Exception as e:
-            print(f"\n✗ Error: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def _generate_embeddings_for_items(self, boq_id: int) -> Dict[str, Any]:
+        """Generate embeddings for all items in TBE BOQ."""
+        try:
+            # Get all items
+            items = self.repo.get_tbe_items_by_boq(boq_id, limit=10000, offset=0)
+            
+            if not items:
+                return {'success': False, 'error': 'No items found to generate embeddings'}
+            
+            print(f"📝 Generating embeddings for {len(items)} items...")
+            
+            # Note: estimate_boq_items table doesn't have embedding columns
+            # We'll generate them on-the-fly for price fetching
+            # Store temporarily in memory
+            
+            batch_size = 100
+            embeddings_map = {}  # item_id -> embedding
+            
+            for i in range(0, len(items), batch_size):
+                batch = items[i:i + batch_size]
+                batch_num = (i // batch_size) + 1
+                total_batches = (len(items) + batch_size - 1) // batch_size
+                
+                print(f"   Batch {batch_num}/{total_batches} ({len(batch)} items)...")
+                
+                for item in batch:
+                    try:
+                        result = genai.embed_content(
+                            model=self.embedding_model,
+                            content=item['item_description'],
+                            task_type="retrieval_query"
+                        )
+                        embeddings_map[item['item_id']] = result['embedding']
+                    except Exception as e:
+                        print(f"      ⚠ Failed for item {item['item_id']}: {e}")
+                        continue
+                
+                print(f"   ✓ Generated {len(batch)} embeddings")
+            
+            print(f"\n✓ Total embeddings generated: {len(embeddings_map)}")
+            
+            # Store embeddings temporarily in class instance for price fetching
+            self._embeddings_cache = embeddings_map
+            
+            return {
+                'success': True,
+                'count': len(embeddings_map)
+            }
+            
+        except Exception as e:
+            print(f"\n✗ Embedding generation error: {e}")
             import traceback
             traceback.print_exc()
             return {'success': False, 'error': str(e)}
+    
+    def _fetch_prices_for_items(
+        self, 
+        boq_id: int, 
+        top_k: int, 
+        min_similarity: float
+    ) -> Dict[str, Any]:
+        """Fetch prices for all items using similarity search."""
+        try:
+            # Get all items
+            items = self.repo.get_tbe_items_by_boq(boq_id, limit=10000, offset=0)
+            
+            if not items:
+                return {'success': False, 'error': 'No items found'}
+            
+            print(f"🔍 Fetching prices for {len(items)} items...\n")
+            
+            items_with_prices = 0
+            items_without_prices = 0
+            result_items = []
+            
+            for idx, item in enumerate(items, 1):
+                item_id = item['item_id']
+                description = item['item_description']
+                unit = item['unit_of_measurement']
+                quantity = item['quantity']
+                item_code = item['item_code']
+                
+                print(f"[{idx}/{len(items)}] {item_code or 'N/A'}: {description[:60]}...")
+                
+                # Get embedding from cache
+                if not hasattr(self, '_embeddings_cache') or item_id not in self._embeddings_cache:
+                    print(f"  ⚠️  No embedding found, skipping")
+                    items_without_prices += 1
+                    result_items.append(ItemWithPrice(
+                        item_id=item_id,
+                        item_code=item_code,
+                        description=description,
+                        unit=unit,
+                        quantity=quantity,
+                        similar_items_found=0,
+                        supply_rate_stats=None,
+                        labour_rate_stats=None,
+                        estimated_supply_rate=None,
+                        estimated_labour_rate=None,
+                        estimated_supply_total=None,
+                        estimated_labour_total=None,
+                        estimated_total=None
+                    ))
+                    continue
+                
+                query_embedding = self._embeddings_cache[item_id]
+                
+                # Find similar items
+                similar_items = self.price_repo.find_similar_items(
+                    query_embedding=query_embedding,
+                    unit=unit,
+                    limit=top_k,
+                    min_similarity=min_similarity
+                )
+                
+                if similar_items:
+                    print(f"  ✓ Found {len(similar_items)} similar items")
+                    items_with_prices += 1
+                    
+                    # Calculate statistics
+                    supply_stats = self._calculate_stats(
+                        [item['supply_rate'] for item in similar_items if item['supply_rate'] > 0]
+                    )
+                    labour_stats = self._calculate_stats(
+                        [item['labour_rate'] for item in similar_items if item['labour_rate'] > 0]
+                    )
+                    
+                    # Estimated rates
+                    estimated_supply_rate = supply_stats.avg if supply_stats else None
+                    estimated_labour_rate = labour_stats.avg if labour_stats else None
+                    
+                    # Estimated totals
+                    estimated_supply_total = estimated_supply_rate * quantity if estimated_supply_rate else None
+                    estimated_labour_total = estimated_labour_rate * quantity if estimated_labour_rate else None
+                    estimated_total = None
+                    if estimated_supply_total and estimated_labour_total:
+                        estimated_total = estimated_supply_total + estimated_labour_total
+                    elif estimated_supply_total:
+                        estimated_total = estimated_supply_total
+                    
+                    if supply_stats:
+                        print(f"  💰 Avg Supply Rate: ₹{supply_stats.avg:,.2f}/{unit}")
+                    if labour_stats:
+                        print(f"  💰 Avg Labour Rate: ₹{labour_stats.avg:,.2f}/{unit}")
+                    
+                    result_items.append(ItemWithPrice(
+                        item_id=item_id,
+                        item_code=item_code,
+                        description=description,
+                        unit=unit,
+                        quantity=quantity,
+                        similar_items_found=len(similar_items),
+                        supply_rate_stats=supply_stats,
+                        labour_rate_stats=labour_stats,
+                        estimated_supply_rate=estimated_supply_rate,
+                        estimated_labour_rate=estimated_labour_rate,
+                        estimated_supply_total=estimated_supply_total,
+                        estimated_labour_total=estimated_labour_total,
+                        estimated_total=estimated_total
+                    ))
+                else:
+                    print(f"  ⚠️  No similar items found")
+                    items_without_prices += 1
+                    result_items.append(ItemWithPrice(
+                        item_id=item_id,
+                        item_code=item_code,
+                        description=description,
+                        unit=unit,
+                        quantity=quantity,
+                        similar_items_found=0,
+                        supply_rate_stats=None,
+                        labour_rate_stats=None,
+                        estimated_supply_rate=None,
+                        estimated_labour_rate=None,
+                        estimated_supply_total=None,
+                        estimated_labour_total=None,
+                        estimated_total=None
+                    ))
+            
+            # Clean up cache
+            if hasattr(self, '_embeddings_cache'):
+                del self._embeddings_cache
+            
+            return {
+                'success': True,
+                'items_with_prices': items_with_prices,
+                'items_without_prices': items_without_prices,
+                'items': result_items
+            }
+            
+        except Exception as e:
+            print(f"\n✗ Price fetching error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'success': False, 'error': str(e)}
+    
+    def _calculate_stats(self, rates: List[float]) -> Optional[PriceStatistics]:
+        """Calculate price statistics."""
+        if not rates:
+            return None
+        
+        rates_float = [float(r) if isinstance(r, Decimal) else r for r in rates]
+        
+        return PriceStatistics(
+            avg=sum(rates_float) / len(rates_float),
+            min=min(rates_float),
+            max=max(rates_float),
+            median=median(rates_float),
+            count=len(rates_float)
+        )
     
     def _read_excel(self, file_path: str) -> Dict[str, pd.DataFrame]:
         """Read Excel file."""
@@ -136,24 +480,33 @@ class TBEBOQProcessor:
         }
     
     def _process_metadata(self, df: pd.DataFrame, uploaded_by: str) -> tuple:
-        """Extract and save project/location."""
+        """Extract and save project/estimate project/location."""
         text = df.head(20).to_string()
         
         # Extract project
         project_data = self.extractor.extract_project_info(text)
-        project_info = self._build_project_info(project_data)
+        project_info = self._build_project_info(project_data, uploaded_by)
         project_id = self.repo.insert_project(project_info)
+        print(f"   ✓ Project ID: {project_id}")
+        
+        # Create estimate project
+        estimate_project_info = self._build_estimate_project_info(
+            project_id, project_data, uploaded_by
+        )
+        estimate_project_id = self.repo.insert_estimate_boq_project(estimate_project_info)
+        print(f"   ✓ Estimate Project ID: {estimate_project_id}")
         
         # Extract location
-        location_info = self._build_location_info(project_data, project_id)
+        location_info = self._build_location_info(project_data, estimate_project_id)
         location_id = self.repo.insert_location(location_info)
+        print(f"   ✓ Location ID: {location_id}")
         
-        return project_id, location_id
+        return project_id, estimate_project_id, location_id
     
-    def _create_boq_file(self, project_id: int, file_path: str, uploaded_by: str) -> int:
+    def _create_boq_file(self, estimate_project_id: int, file_path: str, uploaded_by: str) -> int:
         """Create BOQ file record."""
         file_info = TBEBOQFileInfo(
-            project_id=project_id,
+            estimate_project_id=estimate_project_id,
             file_name=Path(file_path).name,
             file_path=file_path,
             created_by=uploaded_by
@@ -198,6 +551,21 @@ class TBEBOQProcessor:
         print(f"      ✓ Extracted {len(items)} items")
         return items
     
+    def get_tbe_items(self, boq_id: int, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+        """Get TBE items by BOQ ID."""
+        try:
+            items = self.repo.get_tbe_items_by_boq(boq_id, limit, offset)
+            return {
+                'success': True,
+                'boq_id': boq_id,
+                'items': items,
+                'count': len(items),
+                'limit': limit,
+                'offset': offset
+            }
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+    
     @staticmethod
     def _should_skip_sheet(name: str, df: pd.DataFrame) -> bool:
         """Check if sheet should be skipped."""
@@ -205,36 +573,72 @@ class TBEBOQProcessor:
         return any(kw in name.lower() for kw in skip) or len(df) < 5
     
     @staticmethod
-    def _build_project_info(data: dict) -> TBEProjectInfo:
+    def _build_project_info(data: dict, uploaded_by: str) -> TBEProjectInfo:
         """Build project info."""
         year = data.get('year', datetime.now().year)
         return TBEProjectInfo(
             project_name=data.get('project_name', f"TBE Project {datetime.now():%Y%m%d}"),
             project_code=data.get('project_code', f"TBE-{year}-{datetime.now():%m%d%H%M}"),
+            project_type="boq",
             client_name=data.get('client_name'),
             start_date=f"{year}-01-01" if year else None,
             end_date=f"{year}-12-31" if year else None,
+            created_by=uploaded_by,
         )
     
     @staticmethod
-    def _build_location_info(data: dict, project_id: int) -> TBELocationInfo:
+    def _build_estimate_project_info(
+        project_id: int, 
+        data: dict, 
+        uploaded_by: str
+    ) -> EstimateBOQProjectInfo:
+        """Build estimate project info."""
+        project_name = data.get('project_name', f"TBE Project {datetime.now():%Y%m%d}")
+        return EstimateBOQProjectInfo(
+            project_id=project_id,
+            estimate_project_name=f"{project_name} - Estimate",
+            estimate_project_code=f"EST-{datetime.now():%Y%m%d%H%M}",
+            estimation_status="pending",
+            created_by=uploaded_by,
+        )
+    
+    @staticmethod
+    def _build_location_info(data: dict, estimate_project_id: int) -> TBELocationInfo:
         """Build location info."""
         location = data.get('location', 'Unknown Location')
         return TBELocationInfo(
-            project_id=project_id,
+            estimate_project_id=estimate_project_id,
             location_name=location,
             address=location
         )
     
     @staticmethod
-    def _print_summary(project_id, location_id, boq_id, summary, elapsed):
-        """Print summary."""
-        print(f"\n{'='*70}")
-        print("✓ PROCESSING COMPLETE")
-        print(f"{'='*70}")
-        print(f"Project ID:      {project_id}")
-        print(f"Location ID:     {location_id}")
-        print(f"BOQ ID:          {boq_id}")
-        print(f"Total Items:     {summary['item_count']}")
-        print(f"Processing Time: {elapsed:.2f}s")
-        print(f"{'='*70}\n")
+    def _print_final_summary(
+        project_id, estimate_project_id, location_id, boq_id,
+        total_items, items_with_prices, items_without_prices,
+        total_estimated_supply, total_estimated_labour,
+        total_estimated_amount, file_time, embedding_time,
+        price_time, total_time
+    ):
+        """Print final processing summary."""
+        print(f"\n{'='*80}")
+        print("✓ COMPLETE PROCESSING SUMMARY")
+        print(f"{'='*80}")
+        print(f"Project ID:               {project_id}")
+        print(f"Estimate Project ID:      {estimate_project_id}")
+        print(f"Location ID:              {location_id}")
+        print(f"BOQ ID:                   {boq_id}")
+        print(f"\nItems:")
+        print(f"  Total Items:            {total_items}")
+        print(f"  Items with Prices:      {items_with_prices}")
+        print(f"  Items without Prices:   {items_without_prices}")
+        print(f"\nEstimated Totals:")
+        print(f"  Supply Amount:          ₹{total_estimated_supply:,.2f}")
+        print(f"  Labour Amount:          ₹{total_estimated_labour:,.2f}")
+        print(f"  Total Amount:           ₹{total_estimated_amount:,.2f}")
+        print(f"\nTiming:")
+        print(f"  File Processing:        {file_time:.2f}s")
+        print(f"  Embedding Generation:   {embedding_time:.2f}s")
+        print(f"  Price Fetching:         {price_time:.2f}s")
+        print(f"  Total Time:             {total_time:.2f}s")
+        print(f"{'='*80}\n")

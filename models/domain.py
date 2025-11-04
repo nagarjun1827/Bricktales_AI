@@ -11,7 +11,7 @@ class ProjectInfo:
     """Project information."""
     project_name: str
     project_code: str
-    client_id: Optional[int] = None
+    project_type: str = "boq"  # 'tender' or 'boq'
     client_name: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
@@ -20,9 +20,19 @@ class ProjectInfo:
 
 
 @dataclass
+class StoreBOQProjectInfo:
+    """Store BOQ project information."""
+    project_id: int
+    store_project_name: str
+    store_project_code: str
+    total_project_value: Optional[float] = None
+    created_by: str = "system"
+
+
+@dataclass
 class LocationInfo:
     """Location information."""
-    project_id: int
+    store_project_id: int
     location_name: str
     address: Optional[str] = None
     latitude: Optional[float] = None
@@ -33,7 +43,7 @@ class LocationInfo:
 @dataclass
 class BOQFileInfo:
     """BOQ file information."""
-    project_id: int
+    store_project_id: int
     file_name: str
     file_path: str
     file_type: str = "xlsx"

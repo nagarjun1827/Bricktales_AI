@@ -5,30 +5,47 @@ from typing import Optional
 class TBEProjectInfo:
     project_name: str
     project_code: str
+    project_type: str = "boq"
     client_name: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     version: int = 1
     created_by: str = "system"
 
+
+@dataclass
+class EstimateBOQProjectInfo:
+    """Estimate BOQ project information."""
+    project_id: int
+    estimate_project_name: str
+    estimate_project_code: str
+    estimation_status: str = "pending"
+    estimated_value: Optional[float] = None
+    estimated_by: Optional[str] = None
+    estimated_at: Optional[str] = None
+    created_by: str = "system"
+
+
 @dataclass
 class TBELocationInfo:
-    project_id: int
+    estimate_project_id: int
     location_name: str
     address: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     created_by: str = "system"
 
+
 @dataclass
 class TBEBOQFileInfo:
-    project_id: int
+    estimate_project_id: int
     file_name: str
     file_path: str
     file_type: str = "xlsx"
     version: int = 1
     is_active: bool = True
     created_by: str = "system"
+
 
 @dataclass
 class TBEBOQItem:

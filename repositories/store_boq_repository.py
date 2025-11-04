@@ -4,7 +4,7 @@ Repository for store BOQ database operations.
 import psycopg2
 from psycopg2.extras import execute_values
 from typing import List, Dict
-from models.domain import ProjectInfo, LocationInfo, BOQFileInfo, BOQItem
+from models.domain import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo, BOQItem
 from core.settings import settings
 
 
@@ -56,35 +56,63 @@ class StoreBOQRepository:
         """Insert project."""
         query = """
             INSERT INTO projects (
-                project_name, project_code, client_id, client_name,
+                project_name, project_code, project_type, client_name,
                 start_date, end_date, version, created_by
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING project_id
         """
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(query, (
-                project_info.project_name, project_info.project_code,
-                project_info.client_id, project_info.client_name,
-                project_info.start_date, project_info.end_date,
-                project_info.version, project_info.created_by,
+                project_info.project_name, 
+                project_info.project_code,
+                project_info.project_type,
+                project_info.client_name,
+                project_info.start_date, 
+                project_info.end_date,
+                project_info.version, 
+                project_info.created_by,
             ))
             project_id = cur.fetchone()[0]
             conn.commit()
             return project_id
 
+    def insert_store_boq_project(self, store_project_info: StoreBOQProjectInfo) -> int:
+        """Insert store BOQ project."""
+        query = """
+            INSERT INTO store_boq_projects (
+                project_id, store_project_name, store_project_code,
+                total_project_value, created_by
+            ) VALUES (%s, %s, %s, %s, %s)
+            RETURNING store_project_id
+        """
+        with self._get_connection() as conn, conn.cursor() as cur:
+            cur.execute(query, (
+                store_project_info.project_id,
+                store_project_info.store_project_name,
+                store_project_info.store_project_code,
+                store_project_info.total_project_value,
+                store_project_info.created_by,
+            ))
+            store_project_id = cur.fetchone()[0]
+            conn.commit()
+            return store_project_id
+
     def insert_location(self, location_info: LocationInfo) -> int:
         """Insert location."""
         query = """
-            INSERT INTO locations (
-                project_id, location_name, address, latitude, longitude, created_by
+            INSERT INTO store_boq_locations (
+                store_project_id, location_name, address, latitude, longitude, created_by
             ) VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING location_id
         """
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(query, (
-                location_info.project_id, location_info.location_name,
-                location_info.address, location_info.latitude,
-                location_info.longitude, location_info.created_by,
+                location_info.store_project_id,
+                location_info.location_name,
+                location_info.address, 
+                location_info.latitude,
+                location_info.longitude, 
+                location_info.created_by,
             ))
             location_id = cur.fetchone()[0]
             conn.commit()
@@ -94,16 +122,19 @@ class StoreBOQRepository:
         """Insert BOQ file."""
         query = """
             INSERT INTO store_boq_files (
-                project_id, file_name, file_path, file_type,
+                store_project_id, file_name, file_path, file_type,
                 version, is_active, created_by
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING boq_id
         """
         with self._get_connection() as conn, conn.cursor() as cur:
             cur.execute(query, (
-                file_info.project_id, file_info.file_name,
-                file_info.file_path, file_info.file_type,
-                file_info.version, file_info.is_active,
+                file_info.store_project_id,
+                file_info.file_name,
+                file_info.file_path, 
+                file_info.file_type,
+                file_info.version, 
+                file_info.is_active,
                 file_info.created_by,
             ))
             boq_id = cur.fetchone()[0]
