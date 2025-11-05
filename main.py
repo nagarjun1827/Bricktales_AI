@@ -7,7 +7,7 @@ from routers.store_boq_routes import router as store_boq_router
 
 app = FastAPI(
     title="QuoCo BOQ API",
-    description="AI-powered BoQ estimation",
+    description="AI-powered BoQ estimation from URL",
     version="2.0.0",
 )
 
@@ -22,9 +22,15 @@ def root():
         "version": "2.0.0",
         "docs": "/docs",
         "endpoints": {
-            "store_boq": "/store-boq - Process BOQ with rates",
-            "estimate_boq": "/estimate-boq - Process BOQ without rates and fetch prices automatically"
-        }
+            "store_boq": "/store-boq/upload - Process BOQ with rates via URL (direct processing)",
+            "estimate_boq": "/estimate-boq/upload - Process BOQ without rates and fetch prices automatically via URL (direct processing)"
+        },
+        "features": [
+            "Direct URL processing (no file uploads required)",
+            "Automatic embedding generation",
+            "Intelligent price fetching",
+            "Optional CSV export"
+        ]
     }
 
 @app.get("/health")

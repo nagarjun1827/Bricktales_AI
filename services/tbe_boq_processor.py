@@ -1,10 +1,11 @@
 """
-Service for processing To-Be-Estimated BOQ files with automatic price fetching.
+Service for processing To-Be-Estimated BOQ files from URL with automatic price fetching.
 """
 import time
 import re
 import json
-from pathlib import Path
+import requests
+import io
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from decimal import Decimal
@@ -65,7 +66,7 @@ Return JSON mapping."""
 
 
 class TBEBOQProcessor:
-    """Processes To-Be-Estimated BOQ files with automatic price fetching."""
+    """Processes To-Be-Estimated BOQ files from URL with automatic price fetching."""
     
     def __init__(self):
         self.repo = TBEBOQRepository()
@@ -77,38 +78,38 @@ class TBEBOQProcessor:
         genai.configure(api_key=settings.GEMINI_API_KEY)
         self.embedding_model = "models/text-embedding-004"
     
-    def process_file(
+    def process_file_from_url(
         self, 
-        file_path: str, 
+        file_url: str, 
         uploaded_by: str = "system",
         top_k: int = 5,
         min_similarity: float = 0.5
     ) -> Dict[str, Any]:
         """
-        Process TBE BOQ file with automatic price fetching.
+        Process TBE BOQ file from URL with automatic price fetching.
         
         Workflow:
-        1. Process file and extract items
+        1. Download and process file from URL
         2. Generate embeddings for items
         3. Fetch prices using similarity search
         4. Return complete results
         """
         print(f"\n{'='*80}")
-        print(f"🚀 TBE BOQ PROCESSOR WITH AUTOMATIC PRICE FETCHING")
+        print(f"🚀 TBE BOQ PROCESSOR FROM URL WITH AUTOMATIC PRICE FETCHING")
         print(f"{'='*80}")
-        print(f"File: {Path(file_path).name}")
+        print(f"URL: {file_url}")
         print(f"Top K: {top_k}, Min Similarity: {min_similarity}\n")
         
         start_time = time.time()
         
         try:
-            # STEP 1: Process TBE BOQ File
+            # STEP 1: Process TBE BOQ File from URL
             print("=" * 80)
-            print("STEP 1: PROCESSING TBE BOQ FILE")
+            print("STEP 1: PROCESSING TBE BOQ FILE FROM URL")
             print("=" * 80)
             file_start = time.time()
             
-            tbe_result = self._process_tbe_file(file_path, uploaded_by)
+            tbe_result = self._process_tbe_file_from_url(file_url, uploaded_by)
             
             if not tbe_result['success']:
                 return tbe_result
@@ -203,7 +204,7 @@ class TBEBOQProcessor:
                 'embedding_generation_time': embedding_time,
                 'price_fetching_time': price_time,
                 'total_processing_time': total_time,
-                'message': 'TBE BOQ processed successfully with prices'
+                'message': 'TBE BOQ processed successfully with prices from URL'
             }
             
         except Exception as e:
@@ -212,12 +213,12 @@ class TBEBOQProcessor:
             traceback.print_exc()
             return {'success': False, 'error': str(e)}
     
-    def _process_tbe_file(self, file_path: str, uploaded_by: str) -> Dict[str, Any]:
-        """Process TBE BOQ file and extract items."""
+    def _process_tbe_file_from_url(self, file_url: str, uploaded_by: str) -> Dict[str, Any]:
+        """Process TBE BOQ file from URL and extract items."""
         try:
-            # Read file
-            print("📖 Reading Excel file...")
-            sheets = self._read_excel(file_path)
+            # Read file from URL
+            print("📥 Downloading and reading Excel file from URL...")
+            sheets = self._read_excel_from_url(file_url)
             print(f"   ✓ Read {len(sheets)} sheets\n")
             
             # Extract metadata
@@ -228,7 +229,7 @@ class TBEBOQProcessor:
             
             # Create BOQ file
             print("💾 Creating TBE BOQ file record...")
-            boq_id = self._create_boq_file(estimate_project_id, file_path, uploaded_by)
+            boq_id = self._create_boq_file(estimate_project_id, file_url, uploaded_by)
             print(f"   ✓ BOQ ID: {boq_id}\n")
             
             # Extract items
@@ -241,12 +242,35 @@ class TBEBOQProcessor:
                 items = self._extract_items(df, boq_id, location_id)
                 all_items.extend(items)
             
-            # Insert items
+            # Insert items with error handling
             print(f"\n💾 Inserting {len(all_items)} items...")
-            self.repo.insert_tbe_items_batch(all_items)
+            
+            if not all_items:
+                return {
+                    'success': False, 
+                    'error': 'No items extracted from BOQ file'
+                }
+            
+            try:
+                self.repo.insert_tbe_items_batch(all_items)
+                print(f"   ✓ Items inserted successfully\n")
+            except Exception as insert_error:
+                print(f"   ✗ Insert failed: {insert_error}")
+                import traceback
+                traceback.print_exc()
+                return {
+                    'success': False,
+                    'error': f'Failed to insert items: {str(insert_error)}'
+                }
             
             # Summary
-            summary = self.repo.get_tbe_boq_summary(boq_id)
+            try:
+                summary = self.repo.get_tbe_boq_summary(boq_id)
+                print(f"   ✓ Summary retrieved: {summary['item_count']} items\n")
+            except Exception as summary_error:
+                print(f"   ⚠️  Summary retrieval failed: {summary_error}")
+                # Use fallback count
+                summary = {'item_count': len(all_items)}
             
             return {
                 'success': True,
@@ -258,7 +282,34 @@ class TBEBOQProcessor:
             }
             
         except Exception as e:
+            print(f"\n✗ File processing error: {e}")
+            import traceback
+            traceback.print_exc()
             return {'success': False, 'error': str(e)}
+        
+    def _read_excel_from_url(self, file_url: str) -> Dict[str, pd.DataFrame]:
+        """Read all sheets from Excel file at URL."""
+        try:
+            print(f"   Fetching file from URL...")
+            response = requests.get(file_url, timeout=120)
+            response.raise_for_status()
+            
+            print(f"   File downloaded ({len(response.content)} bytes)")
+            print(f"   Reading Excel sheets...")
+            
+            # Read Excel from bytes
+            excel_file = pd.ExcelFile(io.BytesIO(response.content))
+            sheets = {
+                name: pd.read_excel(io.BytesIO(response.content), sheet_name=name) 
+                for name in excel_file.sheet_names
+            }
+            
+            return sheets
+            
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to download file from URL: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Failed to read Excel file: {str(e)}")
     
     def _generate_embeddings_for_items(self, boq_id: int) -> Dict[str, Any]:
         """Generate embeddings for all items in TBE BOQ."""
@@ -270,10 +321,6 @@ class TBEBOQProcessor:
                 return {'success': False, 'error': 'No items found to generate embeddings'}
             
             print(f"📝 Generating embeddings for {len(items)} items...")
-            
-            # Note: estimate_boq_items table doesn't have embedding columns
-            # We'll generate them on-the-fly for price fetching
-            # Store temporarily in memory
             
             batch_size = 100
             embeddings_map = {}  # item_id -> embedding
@@ -471,14 +518,6 @@ class TBEBOQProcessor:
             count=len(rates_float)
         )
     
-    def _read_excel(self, file_path: str) -> Dict[str, pd.DataFrame]:
-        """Read Excel file."""
-        excel_file = pd.ExcelFile(file_path)
-        return {
-            name: pd.read_excel(file_path, sheet_name=name)
-            for name in excel_file.sheet_names
-        }
-    
     def _process_metadata(self, df: pd.DataFrame, uploaded_by: str) -> tuple:
         """Extract and save project/estimate project/location."""
         text = df.head(20).to_string()
@@ -503,12 +542,20 @@ class TBEBOQProcessor:
         
         return project_id, estimate_project_id, location_id
     
-    def _create_boq_file(self, estimate_project_id: int, file_path: str, uploaded_by: str) -> int:
+    def _create_boq_file(self, estimate_project_id: int, file_url: str, uploaded_by: str) -> int:
         """Create BOQ file record."""
+        # Extract filename from URL or use generic name
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(file_url)
+            filename = parsed.path.split('/')[-1] or "estimate_boq_from_url.xlsx"
+        except:
+            filename = "estimate_boq_from_url.xlsx"
+            
         file_info = TBEBOQFileInfo(
             estimate_project_id=estimate_project_id,
-            file_name=Path(file_path).name,
-            file_path=file_path,
+            file_name=filename,
+            file_path=file_url,  # Store URL instead of local path
             created_by=uploaded_by
         )
         return self.repo.insert_tbe_boq_file(file_info)
@@ -550,21 +597,6 @@ class TBEBOQProcessor:
         
         print(f"      ✓ Extracted {len(items)} items")
         return items
-    
-    def get_tbe_items(self, boq_id: int, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
-        """Get TBE items by BOQ ID."""
-        try:
-            items = self.repo.get_tbe_items_by_boq(boq_id, limit, offset)
-            return {
-                'success': True,
-                'boq_id': boq_id,
-                'items': items,
-                'count': len(items),
-                'limit': limit,
-                'offset': offset
-            }
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
     
     @staticmethod
     def _should_skip_sheet(name: str, df: pd.DataFrame) -> bool:

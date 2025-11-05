@@ -3,7 +3,7 @@ from typing import Optional, List
 
 class TBEProcessingStatus(BaseModel):
     task_id: str
-    status: str  # pending, processing_file, generating_embeddings, fetching_prices, completed, failed
+    status: str  # pending, processing_file, generating_embeddings, fetching_prices, exporting_csv, completed, failed
     message: str
     progress: Optional[float] = None
     current_step: Optional[str] = None
@@ -51,6 +51,11 @@ class TBEProcessingResult(BaseModel):
     
     # Detailed Items with Prices
     items: List[ItemWithPrice] = []
+    
+    # CSV Export fields
+    csv_available: Optional[bool] = None
+    csv_data: Optional[str] = None
+    csv_error: Optional[str] = None
     
     # Timing
     file_processing_time: Optional[float] = None

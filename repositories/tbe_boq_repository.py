@@ -116,8 +116,11 @@ class TBEBOQRepository:
     def insert_tbe_items_batch(self, items: List[TBEBOQItem]) -> None:
         """Batch insert to-be-estimated BOQ items (no pricing)"""
         if not items:
+            print("   ⚠️  No items to insert")
             return
-            
+        
+        print(f"   Preparing to insert {len(items)} items...")
+        
         items_data = [
             (
                 item.boq_id,
@@ -131,6 +134,8 @@ class TBEBOQRepository:
             for item in items
         ]
         
+        print(f"   Data prepared for {len(items_data)} items")
+        
         query = """
             INSERT INTO estimate_boq_items (
                 boq_id, item_code, item_description, 
@@ -139,9 +144,16 @@ class TBEBOQRepository:
             ) VALUES %s
         """
         
-        with self._get_connection() as conn, conn.cursor() as cur:
-            execute_values(cur, query, items_data)
-            conn.commit()
+        try:
+            with self._get_connection() as conn, conn.cursor() as cur:
+                print("   Executing batch insert...")
+                execute_values(cur, query, items_data)
+                print(f"   Committing {cur.rowcount} rows...")
+                conn.commit()
+                print(f"   ✓ Successfully inserted {cur.rowcount} items")
+        except Exception as e:
+            print(f"   ✗ Insert failed: {e}")
+            raise
 
     def get_tbe_boq_summary(self, boq_id: int) -> Dict[str, int]:
         """Get summary of to-be-estimated BOQ"""

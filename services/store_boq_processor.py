@@ -1,9 +1,10 @@
 """
-Service for processing store BOQ files (with rates and pricing).
+Service for processing store BOQ files (with rates and pricing) from URL.
 """
 import json
 import time
-from pathlib import Path
+import requests
+import io
 from typing import Dict, Any
 import pandas as pd
 import google.generativeai as genai
@@ -21,7 +22,7 @@ from datetime import datetime
 
 
 class StoreBOQProcessor:
-    """Processes store BOQ files with automatic embedding generation."""
+    """Processes store BOQ files from URL with automatic embedding generation."""
     
     def __init__(self):
         self.repo = StoreBOQRepository()
@@ -34,33 +35,33 @@ class StoreBOQProcessor:
         genai.configure(api_key=settings.GEMINI_API_KEY)
         self.embedding_model = "models/text-embedding-004"
 
-    def process_file(
+    def process_file_from_url(
         self, 
-        file_path: str, 
+        file_url: str, 
         uploaded_by: str = "system"
     ) -> Dict[str, Any]:
         """
-        Process store BOQ file with automatic embedding generation.
+        Process store BOQ file from URL with automatic embedding generation.
         
         Args:
-            file_path: Path to Excel file
+            file_url: URL to Excel file
             uploaded_by: User identifier
             
         Returns:
             Processing results with embeddings
         """
         print(f"\n{'='*70}")
-        print(f"🤖 STORE BOQ PROCESSOR")
+        print(f"🤖 STORE BOQ PROCESSOR FROM URL")
         print(f"🧠 WITH AUTOMATIC EMBEDDING GENERATION")
         print(f"{'='*70}")
-        print(f"File: {Path(file_path).name}\n")
+        print(f"URL: {file_url}\n")
 
         start_time = time.time()
 
         try:
-            # Step 1: Read Excel file
-            print("📖 Step 1: Reading Excel file...")
-            sheets = self._read_excel_file(file_path)
+            # Step 1: Download and read Excel file from URL
+            print("📥 Step 1: Downloading and reading Excel file from URL...")
+            sheets = self._read_excel_from_url(file_url)
             print(f"   ✓ Read {len(sheets)} sheets\n")
 
             # Step 2-6: Extract and save project/store_project/location
@@ -71,7 +72,7 @@ class StoreBOQProcessor:
 
             # Step 7: Create BOQ file record
             print("💾 Step 7: Creating BOQ file record...")
-            boq_id = self._create_boq_file(store_project_id, file_path, uploaded_by)
+            boq_id = self._create_boq_file(store_project_id, file_url, uploaded_by)
             print(f"   ✓ BOQ ID: {boq_id}\n")
 
             # Step 8: Process sheets and extract items
@@ -119,13 +120,29 @@ class StoreBOQProcessor:
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
-    def _read_excel_file(self, file_path: str) -> Dict[str, pd.DataFrame]:
-        """Read all sheets from Excel file."""
-        excel_file = pd.ExcelFile(file_path)
-        return {
-            name: pd.read_excel(file_path, sheet_name=name) 
-            for name in excel_file.sheet_names
-        }
+    def _read_excel_from_url(self, file_url: str) -> Dict[str, pd.DataFrame]:
+        """Read all sheets from Excel file at URL."""
+        try:
+            print(f"   Fetching file from URL...")
+            response = requests.get(file_url, timeout=120)
+            response.raise_for_status()
+            
+            print(f"   File downloaded ({len(response.content)} bytes)")
+            print(f"   Reading Excel sheets...")
+            
+            # Read Excel from bytes
+            excel_file = pd.ExcelFile(io.BytesIO(response.content))
+            sheets = {
+                name: pd.read_excel(io.BytesIO(response.content), sheet_name=name) 
+                for name in excel_file.sheet_names
+            }
+            
+            return sheets
+            
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Failed to download file from URL: {str(e)}")
+        except Exception as e:
+            raise Exception(f"Failed to read Excel file: {str(e)}")
 
     def _process_metadata(self, first_sheet: pd.DataFrame, uploaded_by: str) -> tuple:
         """Extract and save project, store project, and location metadata."""
@@ -167,12 +184,20 @@ class StoreBOQProcessor:
         
         return project_id, store_project_id, location_id
 
-    def _create_boq_file(self, store_project_id: int, file_path: str, uploaded_by: str) -> int:
+    def _create_boq_file(self, store_project_id: int, file_url: str, uploaded_by: str) -> int:
         """Create BOQ file record."""
+        # Extract filename from URL or use generic name
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(file_url)
+            filename = parsed.path.split('/')[-1] or "boq_from_url.xlsx"
+        except:
+            filename = "boq_from_url.xlsx"
+            
         file_info = BOQFileInfo(
             store_project_id=store_project_id,
-            file_name=Path(file_path).name,
-            file_path=file_path,
+            file_name=filename,
+            file_path=file_url,  # Store URL instead of local path
             created_by=uploaded_by,
         )
         return self.repo.insert_boq_file(file_info)

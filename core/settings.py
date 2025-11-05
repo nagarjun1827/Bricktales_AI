@@ -2,7 +2,7 @@
 Application settings and configuration.
 """
 from pydantic_settings import BaseSettings
-from pathlib import Path
+from pydantic import ConfigDict
 
 
 class Settings(BaseSettings):
@@ -17,12 +17,11 @@ class Settings(BaseSettings):
     DB_USER: str = "postgres"
     DB_PASSWORD: str = "root"
     DB_NAME: str = "boq_database"
-    
-    # File Upload
-    UPLOAD_DIR: str = "./uploads"
 
-    class Config:
-        env_file = ".env"
+    model_config = ConfigDict(
+        env_file=".env",
+        extra="ignore"  # This will ignore extra fields from .env
+    )
 
 
 settings = Settings()

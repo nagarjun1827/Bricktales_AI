@@ -1,41 +1,65 @@
-from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks, Query, Form
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, HttpUrl
 from models.tbe_dto import TBEProcessingStatus, TBEProcessingResult
 from services.tbe_boq_processor import TBEBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
-from core.settings import settings
 from pathlib import Path
 import uuid
-import shutil
 import csv
 import io
 
 router = APIRouter(prefix="/estimate-boq", tags=["Estimate BOQ Processing"])
 
-UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "tbe"
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+class EstimateBOQURLRequest(BaseModel):
+    """Request model for Estimate BOQ URL upload"""
+    file_url: HttpUrl
+    uploaded_by: str = "system"
+    top_k: int = 1
+    min_similarity: float = 0.5
+    export_csv: bool = False
+
 
 def background_tbe_process(
     task_id: str, 
-    file_path: str, 
+    file_url: str, 
     uploaded_by: str,
     top_k: int,
-    min_similarity: float
+    min_similarity: float,
+    export_csv: bool = False
 ):
     """Background task for processing TBE BOQ with automatic price fetching"""
     try:
         # Update status
         processing_tasks[task_id]["status"] = "processing_file"
-        processing_tasks[task_id]["message"] = "Processing TBE BOQ file..."
+        processing_tasks[task_id]["message"] = "Processing TBE BOQ file from URL..."
         processing_tasks[task_id]["current_step"] = "file_processing"
 
         service = TBEBOQProcessor()
-        result = service.process_file(
-            file_path=file_path,
+        result = service.process_file_from_url(
+            file_url=file_url,
             uploaded_by=uploaded_by,
             top_k=top_k,
             min_similarity=min_similarity
         )
+
+        # Generate CSV if requested and processing successful
+        if export_csv and result.get("success"):
+            try:
+                processing_tasks[task_id]["message"] = "Generating CSV export..."
+                processing_tasks[task_id]["current_step"] = "exporting_csv"
+                
+                csv_data = _generate_csv_data(result)
+                result["csv_data"] = csv_data
+                result["csv_available"] = True
+                
+            except Exception as csv_error:
+                print(f"⚠️ CSV generation failed: {csv_error}")
+                result["csv_available"] = False
+                result["csv_error"] = str(csv_error)
+        else:
+            result["csv_available"] = False
 
         processing_tasks[task_id].update({
             "status": "completed" if result["success"] else "failed",
@@ -52,65 +76,136 @@ def background_tbe_process(
         })
 
 
-@router.post("/upload", response_model=TBEProcessingStatus, summary="Upload TBE BOQ file with automatic price fetching")
-async def upload_tbe_file(
+def _generate_csv_data(result: dict) -> str:
+    """Generate CSV data from processing result as string"""
+    items = result.get("items", [])
+    
+    if not items:
+        raise ValueError("No items found in result")
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Item ID', 'Item Code', 'Description', 'Unit', 'Quantity',
+        'Similar Items Found',
+        'Avg Supply Rate', 'Min Supply Rate', 'Max Supply Rate',
+        'Avg Labour Rate', 'Min Labour Rate', 'Max Labour Rate',
+        'Estimated Supply Rate', 'Estimated Labour Rate',
+        'Estimated Supply Total', 'Estimated Labour Total', 'Estimated Total'
+    ])
+    
+    # Helper function to format number
+    def format_number(value):
+        if value is None:
+            return ''
+        return f"{float(value):.2f}"
+    
+    # Write data
+    for item in items:
+        # Convert Pydantic model to dict
+        item_data = item.model_dump() if hasattr(item, 'model_dump') else item
+        
+        supply_stats = item_data.get('supply_rate_stats')
+        labour_stats = item_data.get('labour_rate_stats')
+        
+        writer.writerow([
+            item_data.get('item_id', ''),
+            item_data.get('item_code', ''),
+            item_data.get('description', ''),
+            item_data.get('unit', ''),
+            item_data.get('quantity', ''),
+            item_data.get('similar_items_found', 0),
+            # Supply rate stats
+            format_number(supply_stats.get('avg') if supply_stats else None),
+            format_number(supply_stats.get('min') if supply_stats else None),
+            format_number(supply_stats.get('max') if supply_stats else None),
+            # Labour rate stats
+            format_number(labour_stats.get('avg') if labour_stats else None),
+            format_number(labour_stats.get('min') if labour_stats else None),
+            format_number(labour_stats.get('max') if labour_stats else None),
+            # Estimated rates
+            format_number(item_data.get('estimated_supply_rate')),
+            format_number(item_data.get('estimated_labour_rate')),
+            # Estimated totals
+            format_number(item_data.get('estimated_supply_total')),
+            format_number(item_data.get('estimated_labour_total')),
+            format_number(item_data.get('estimated_total'))
+        ])
+    
+    csv_string = output.getvalue()
+    output.close()
+    
+    print(f"✓ CSV data generated ({len(csv_string)} bytes)")
+    return csv_string
+
+
+@router.post("/upload", response_model=TBEProcessingStatus, summary="Upload Estimate BOQ File via URL")
+async def upload_estimate_boq_url(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(..., description="Excel file (.xlsx, .xls) containing BOQ without rates"),
-    uploaded_by: str = Form(default="system", description="User who uploaded the file"),
-    top_k: int = Form(default=5, ge=1, le=20, description="Number of similar items to find per line item"),
-    min_similarity: float = Form(default=0.5, ge=0.0, le=1.0, description="Minimum similarity threshold for price matching"),
+    request: EstimateBOQURLRequest = Body(...)
 ):
     """
-    Upload and process a To-Be-Estimated BOQ file with automatic price fetching.
+    Upload and process estimate BOQ file from a URL with automatic price fetching.
     
     **Complete Workflow:**
-    1. **File Processing**: Extract items, project info, and location
-    2. **Embedding Generation**: Generate semantic embeddings for all items
-    3. **Price Fetching**: Find similar items and fetch price recommendations
-    4. **Return Results**: Complete BOQ with estimated prices
+    1. **Process File from URL**: Read Excel file directly from URL
+    2. **File Processing**: Extract items, project info, and location
+    3. **Embedding Generation**: Generate semantic embeddings for all items
+    4. **Price Fetching**: Find similar items and fetch price recommendations
+    5. **CSV Export** (Optional): Generate CSV with results if export_csv=true
+    6. **Return Results**: Complete BOQ with estimated prices
     
-    **TBE BOQ files contain:**
-    - Item codes and descriptions
-    - Quantities and units
-    - **NO rates or pricing** (to be estimated automatically)
-    
+    **Request Body:**
+```json
+{
+        "file_url": "https://example.com/estimate_boq.xlsx",
+        "uploaded_by": "user",
+        "top_k": 5,
+        "min_similarity": 0.5,
+        "export_csv": true
+    }
     **Price Fetching Parameters:**
     - **top_k**: Number of similar items to consider (1-20, default: 5)
     - **min_similarity**: Minimum similarity score (0.0-1.0, default: 0.5)
+    - **export_csv**: Generate CSV file after processing (default: false)
     
     **Returns:**
     - Task ID for tracking progress
-    - Complete results with estimated prices when done
+    - Use `/status/{task_id}` to check progress
+    - Use `/result/{task_id}` to get complete results with prices
+    - If export_csv=true, use `/download-csv/{task_id}` to download the CSV file
     """
-    if not file.filename.lower().endswith((".xlsx", ".xls")):
-        raise HTTPException(
-            status_code=400, 
-            detail="Only Excel files (.xlsx, .xls) are supported"
-        )
-
     task_id = str(uuid.uuid4())
-    file_path = UPLOAD_DIR / f"{task_id}_{file.filename}"
 
+    # Create task
     create_task(task_id)
-
-    # Save uploaded file
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    
+    # Update status
+    processing_tasks[task_id]["status"] = "pending"
+    processing_tasks[task_id]["message"] = "Starting processing from URL..."
 
     # Start background processing
     background_tasks.add_task(
         background_tbe_process, 
         task_id, 
-        str(file_path), 
-        uploaded_by,
-        top_k,
-        min_similarity
+        str(request.file_url), 
+        request.uploaded_by,
+        request.top_k,
+        request.min_similarity,
+        request.export_csv
     )
+
+    message = "Estimate BOQ processing started with automatic price fetching from URL."
+    if request.export_csv:
+        message += " CSV export will be generated after processing."
 
     return TBEProcessingStatus(
         task_id=task_id,
         status="pending",
-        message="TBE BOQ processing started with automatic price fetching",
+        message=message,
         current_step="pending"
     )
 
@@ -122,9 +217,10 @@ async def get_tbe_status(task_id: str):
     
     **Possible statuses:**
     - **pending**: Task created, waiting to start
-    - **processing_file**: Extracting BOQ items
+    - **processing_file**: Extracting BOQ items from URL
     - **generating_embeddings**: Creating semantic embeddings
     - **fetching_prices**: Finding similar items and prices
+    - **exporting_csv**: Generating CSV file (if requested)
     - **completed**: Successfully processed with prices
     - **failed**: Processing failed (check result for error details)
     """
@@ -153,6 +249,7 @@ async def get_tbe_result(task_id: str):
       - Similar items found
       - Supply/Labour rate statistics (avg, min, max, median)
       - Estimated rates and totals
+    - **CSV Availability**: csv_available flag
     - **Timing**: Processing time for each step
     """
     task = get_task(task_id)
@@ -164,138 +261,50 @@ async def get_tbe_result(task_id: str):
     return TBEProcessingResult(**task["result"])
 
 
-@router.get("/items/{boq_id}", summary="Get TBE BOQ items (without prices)")
-async def get_tbe_items(
-    boq_id: int,
-    limit: int = Query(default=100, ge=1, le=1000, description="Items per page"),
-    offset: int = Query(default=0, ge=0, description="Number of items to skip")
-):
+@router.get("/download-csv/{task_id}", summary="Download CSV file")
+async def download_csv(task_id: str):
     """
-    Retrieve items from a To-Be-Estimated BOQ (without price information).
+    Download the generated CSV file for a completed task.
     
-    **Note:** This endpoint returns raw BOQ items without prices.
-    For items with price estimates, use the /result/{task_id} endpoint after processing.
+    **Note:** CSV file is only available if export_csv=true was set during upload.
     
-    Items will have:
-    - item_code, item_description, unit_of_measurement, quantity
-    - **NO pricing fields** (use /result for prices)
-    """
-    try:
-        service = TBEBOQProcessor()
-        result = service.get_tbe_items(boq_id, limit, offset)
-        
-        if not result["success"]:
-            raise HTTPException(status_code=500, detail=result.get("error"))
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/summary/{boq_id}", summary="Get TBE BOQ summary")
-async def get_tbe_summary(boq_id: int):
-    """
-    Get summary statistics for a TBE BOQ.
-    
-    Returns:
-    - Total number of items extracted
-    - BOQ metadata
-    
-    **Note:** TBE BOQs don't have pricing until processed, so no amount calculations are included.
-    For estimated amounts, use the /result/{task_id} endpoint.
-    """
-    try:
-        service = TBEBOQProcessor()
-        summary = service.repo.get_tbe_boq_summary(boq_id)
-        
-        return {
-            "success": True,
-            "boq_id": boq_id,
-            "summary": summary
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/export/{task_id}/csv", summary="Export results to CSV")
-async def export_to_csv(task_id: str):
-    """
-    Export TBE BOQ items with price recommendations to CSV file.
+    **Returns:**
+    - CSV file download if available
+    - Error if CSV was not generated or task not found
     """
     try:
         task = get_task(task_id)
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
+        
         if task["status"] != "completed":
-            raise HTTPException(status_code=400, detail="Task not complete yet")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Task not completed yet. Current status: {task['status']}"
+            )
         
         result = task["result"]
-        items = result.get("items", [])
         
-        if not items:
-            raise HTTPException(status_code=404, detail="No items found in result")
+        if not result.get("csv_available"):
+            error_msg = "CSV file was not generated. Set export_csv=true in the upload request to generate CSV."
+            if result.get("csv_error"):
+                error_msg += f" Error: {result['csv_error']}"
+            raise HTTPException(status_code=404, detail=error_msg)
         
-        # Create CSV in memory
-        output = io.StringIO()
-        writer = csv.writer(output)
+        csv_data = result.get("csv_data")
         
-        # Write header
-        writer.writerow([
-            'Item ID', 'Item Code', 'Description', 'Unit', 'Quantity',
-            'Similar Items Found',
-            'Avg Supply Rate', 'Min Supply Rate', 'Max Supply Rate',
-            'Avg Labour Rate', 'Min Labour Rate', 'Max Labour Rate',
-            'Estimated Supply Rate', 'Estimated Labour Rate',
-            'Estimated Supply Total', 'Estimated Labour Total', 'Estimated Total'
-        ])
+        if not csv_data:
+            raise HTTPException(
+                status_code=404, 
+                detail="CSV data not found"
+            )
         
-        # Helper function to format number
-        def format_number(value):
-            if value is None:
-                return ''
-            return f"{float(value):.2f}"
-        
-        # Write data - convert each item to dict first
-        for item in items:
-            # Convert Pydantic model to dict
-            item_data = item.model_dump() if hasattr(item, 'model_dump') else item
-            
-            supply_stats = item_data.get('supply_rate_stats')
-            labour_stats = item_data.get('labour_rate_stats')
-            
-            writer.writerow([
-                item_data.get('item_id', ''),
-                item_data.get('item_code', ''),
-                item_data.get('description', ''),
-                item_data.get('unit', ''),
-                item_data.get('quantity', ''),
-                item_data.get('similar_items_found', 0),
-                # Supply rate stats
-                format_number(supply_stats.get('avg') if supply_stats else None),
-                format_number(supply_stats.get('min') if supply_stats else None),
-                format_number(supply_stats.get('max') if supply_stats else None),
-                # Labour rate stats
-                format_number(labour_stats.get('avg') if labour_stats else None),
-                format_number(labour_stats.get('min') if labour_stats else None),
-                format_number(labour_stats.get('max') if labour_stats else None),
-                # Estimated rates
-                format_number(item_data.get('estimated_supply_rate')),
-                format_number(item_data.get('estimated_labour_rate')),
-                # Estimated totals
-                format_number(item_data.get('estimated_supply_total')),
-                format_number(item_data.get('estimated_labour_total')),
-                format_number(item_data.get('estimated_total'))
-            ])
-        
-        # Prepare response
-        output.seek(0)
+        # Return CSV as streaming response
         boq_id = result.get('boq_id', 'unknown')
-        filename = f"tbe_boq_with_prices_{boq_id}.csv"
+        filename = f"estimate_boq_{boq_id}.csv"
         
         return StreamingResponse(
-            iter([output.getvalue()]),
+            iter([csv_data]),
             media_type="text/csv",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
@@ -304,9 +313,9 @@ async def export_to_csv(task_id: str):
         raise
     except Exception as e:
         import traceback
-        print(f"CSV Export Error: {str(e)}")
+        print(f"CSV Download Error: {str(e)}")
         traceback.print_exc()
         raise HTTPException(
             status_code=500, 
-            detail=f"Failed to generate CSV: {str(e)}"
+            detail=f"Failed to download CSV: {str(e)}"
         )
