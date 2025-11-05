@@ -1,38 +1,53 @@
+"""
+QuoCo BOQ Processing API
+"""
 from fastapi import FastAPI
-from app.api.v1.boq_router import router as boq_router
-from app.api.v1.embedding_router import router as embedding_router
-from app.api.v1.tbe_router import router as tbe_router
-from app.api.v1.price_router import router as price_router  # NEW
+from routers.tbe_boq_routes import router as tbe_boq_router
+from routers.store_boq_routes import router as store_boq_router
 
 app = FastAPI(
-    title="BrickTales - BOQ Processing API",
-    description="AI-powered BOQ extraction and semantic search with TBE support",
+    title="QuoCo BOQ API",
+    description="AI-powered BoQ estimation from URL",
     version="2.0.0",
 )
 
-# Include routers
-app.include_router(boq_router)
-app.include_router(embedding_router)
-app.include_router(tbe_router)
-app.include_router(price_router)
+app.include_router(store_boq_router)
+app.include_router(tbe_boq_router)
 
 @app.get("/")
-def root() -> dict:
+def root():
+    """Root endpoint."""
     return {
-        "message": "BrickTales API is running!",
+        "message": "QuoCo BOQ API v2.0",
         "version": "2.0.0",
+        "docs": "/docs",
         "endpoints": {
-            "docs": "/docs",
-            "store_boq": "/boq - Process BOQ files with rates (store_boq)",
-            "tbe_boq": "/tbe-boq - Process BOQ files without rates (to-be-estimated)",
-            "embeddings": "/embeddings - Semantic search and similarity",
-            "prices": "/prices - Fetch prices for BOQ line items"  # NEW
+            "store_boq": {
+                "upload": "/store-boq/upload - Process BOQ with rates via URL",
+                "status": "/store-boq/status/{task_id} - Check processing status",
+                "result": "/store-boq/result/{task_id} - Get processing results",
+                "info": "/store-boq/info/{boq_id} - Get BOQ information",
+                "delete": "/store-boq/delete/{boq_id} - Delete BOQ and related data"
+            },
+            "estimate_boq": {
+                "upload": "/estimate-boq/upload - Process BOQ without rates and fetch prices via URL",
+                "status": "/estimate-boq/status/{task_id} - Check processing status",
+                "result": "/estimate-boq/result/{task_id} - Get processing results",
+                "download": "/estimate-boq/download-excel/{task_id} - Download Excel with estimates",
+                "info": "/estimate-boq/info/{boq_id} - Get BOQ information",
+                "delete": "/estimate-boq/delete/{boq_id} - Delete BOQ and related data"
+            }
         },
-        "features": {
-            "store_boq_processing": "Full BOQ with rates, quantities, and amounts",
-            "tbe_boq_processing": "BOQ with quantities only (no rates) for estimation",
-            "semantic_search": "Find similar items using AI embeddings",
-            "rate_estimation": "Apply rates to TBE items based on similar store items",
-            "price_fetching": "Fetch price recommendations for BOQ line items"  # NEW
-        }
+        "features": [
+            "Direct URL processing (no file uploads required)",
+            "Automatic embedding generation",
+            "Intelligent price fetching",
+            "Excel export with pricing source",
+            "Delete BOQ with cascade cleanup"
+        ]
     }
+
+@app.get("/health")
+def health():
+    """Health check."""
+    return {"status": "healthy"}
