@@ -22,14 +22,28 @@ def root():
         "version": "2.0.0",
         "docs": "/docs",
         "endpoints": {
-            "store_boq": "/store-boq/upload - Process BOQ with rates via URL (direct processing)",
-            "estimate_boq": "/estimate-boq/upload - Process BOQ without rates and fetch prices automatically via URL (direct processing)"
+            "store_boq": {
+                "upload": "/store-boq/upload - Process BOQ with rates via URL",
+                "status": "/store-boq/status/{task_id} - Check processing status",
+                "result": "/store-boq/result/{task_id} - Get processing results",
+                "info": "/store-boq/info/{boq_id} - Get BOQ information",
+                "delete": "/store-boq/delete/{boq_id} - Delete BOQ and related data"
+            },
+            "estimate_boq": {
+                "upload": "/estimate-boq/upload - Process BOQ without rates and fetch prices via URL",
+                "status": "/estimate-boq/status/{task_id} - Check processing status",
+                "result": "/estimate-boq/result/{task_id} - Get processing results",
+                "download": "/estimate-boq/download-excel/{task_id} - Download Excel with estimates",
+                "info": "/estimate-boq/info/{boq_id} - Get BOQ information",
+                "delete": "/estimate-boq/delete/{boq_id} - Delete BOQ and related data"
+            }
         },
         "features": [
             "Direct URL processing (no file uploads required)",
             "Automatic embedding generation",
             "Intelligent price fetching",
-            "Optional CSV export"
+            "Excel export with pricing source",
+            "Delete BOQ with cascade cleanup"
         ]
     }
 

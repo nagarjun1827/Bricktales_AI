@@ -3,7 +3,7 @@ Repository for store BOQ database operations.
 """
 import psycopg2
 from psycopg2.extras import execute_values
-from typing import List, Dict
+from typing import List, Dict, Any, Optional
 from models.domain import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo, BOQItem
 from core.settings import settings
 
@@ -278,3 +278,166 @@ class StoreBOQRepository:
             affected = cur.rowcount
             conn.commit()
             return affected
+        
+    def delete_boq_by_id(self, boq_id: int) -> Dict[str, Any]:
+        """
+        Delete BOQ file and all related data.
+        Returns count of deleted records from each table.
+        """
+        try:
+            with self._get_connection() as conn, conn.cursor() as cur:
+                deleted_counts = {}
+                
+                # Get BOQ info before deletion
+                cur.execute("""
+                    SELECT sbf.boq_id, sbf.store_project_id, sbf.file_name
+                    FROM store_boq_files sbf
+                    WHERE sbf.boq_id = %s
+                """, (boq_id,))
+                
+                boq_info = cur.fetchone()
+                if not boq_info:
+                    return {
+                        'success': False,
+                        'error': f'BOQ file with ID {boq_id} not found'
+                    }
+                
+                store_project_id = boq_info[1]
+                file_name = boq_info[2]
+                
+                print(f"🗑️  Deleting Store BOQ: {file_name} (ID: {boq_id})")
+                
+                # Step 1: Delete BOQ items
+                cur.execute("""
+                    DELETE FROM store_boq_items 
+                    WHERE boq_id = %s
+                """, (boq_id,))
+                deleted_counts['boq_items'] = cur.rowcount
+                print(f"   ✓ Deleted {cur.rowcount} BOQ items")
+                
+                # Step 2: Delete BOQ file record
+                cur.execute("""
+                    DELETE FROM store_boq_files 
+                    WHERE boq_id = %s
+                """, (boq_id,))
+                deleted_counts['boq_file'] = cur.rowcount
+                print(f"   ✓ Deleted BOQ file record")
+                
+                # Step 3: Check if store project has other BOQ files
+                cur.execute("""
+                    SELECT COUNT(*) FROM store_boq_files 
+                    WHERE store_project_id = %s
+                """, (store_project_id,))
+                
+                remaining_boqs = cur.fetchone()[0]
+                
+                if remaining_boqs == 0:
+                    # Delete store project and related data if no other BOQs exist
+                    print(f"   No other BOQs found for store project {store_project_id}")
+                    
+                    # Get project_id before deleting store project
+                    cur.execute("""
+                        SELECT project_id FROM store_boq_projects 
+                        WHERE store_project_id = %s
+                    """, (store_project_id,))
+                    
+                    project_result = cur.fetchone()
+                    if project_result:
+                        project_id = project_result[0]
+                        
+                        # Delete locations
+                        cur.execute("""
+                            DELETE FROM store_boq_locations 
+                            WHERE store_project_id = %s
+                        """, (store_project_id,))
+                        deleted_counts['locations'] = cur.rowcount
+                        print(f"   ✓ Deleted {cur.rowcount} locations")
+                        
+                        # Delete store project
+                        cur.execute("""
+                            DELETE FROM store_boq_projects 
+                            WHERE store_project_id = %s
+                        """, (store_project_id,))
+                        deleted_counts['store_project'] = cur.rowcount
+                        print(f"   ✓ Deleted store project")
+                        
+                        # Check if project has other store/estimate projects
+                        cur.execute("""
+                            SELECT 
+                                (SELECT COUNT(*) FROM store_boq_projects WHERE project_id = %s) +
+                                (SELECT COUNT(*) FROM estimate_boq_projects WHERE project_id = %s)
+                        """, (project_id, project_id))
+                        
+                        remaining_projects = cur.fetchone()[0]
+                        
+                        if remaining_projects == 0:
+                            # Delete main project if no other references
+                            cur.execute("""
+                                DELETE FROM projects 
+                                WHERE project_id = %s
+                            """, (project_id,))
+                            deleted_counts['project'] = cur.rowcount
+                            print(f"   ✓ Deleted main project")
+                        else:
+                            print(f"   ℹ️  Main project retained (has other references)")
+                            deleted_counts['project'] = 0
+                    else:
+                        deleted_counts['locations'] = 0
+                        deleted_counts['store_project'] = 0
+                        deleted_counts['project'] = 0
+                else:
+                    print(f"   ℹ️  Store project retained ({remaining_boqs} other BOQ(s) exist)")
+                    deleted_counts['locations'] = 0
+                    deleted_counts['store_project'] = 0
+                    deleted_counts['project'] = 0
+                
+                conn.commit()
+                
+                print(f"✓ Successfully deleted Store BOQ {boq_id}")
+                
+                return {
+                    'success': True,
+                    'boq_id': boq_id,
+                    'deleted_counts': deleted_counts,
+                    'message': f'Store BOQ {boq_id} and related data deleted successfully'
+                }
+                
+        except Exception as e:
+            print(f"✗ Error deleting Store BOQ: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def get_boq_info(self, boq_id: int) -> Optional[Dict]:
+        """Get BOQ file information."""
+        query = """
+            SELECT 
+                sbf.boq_id,
+                sbf.file_name,
+                sbf.store_project_id,
+                p.project_name,
+                p.project_code,
+                sbf.created_at
+            FROM store_boq_files sbf
+            JOIN store_boq_projects sbp ON sbf.store_project_id = sbp.store_project_id
+            JOIN projects p ON sbp.project_id = p.project_id
+            WHERE sbf.boq_id = %s
+        """
+        
+        with self._get_connection() as conn, conn.cursor() as cur:
+            cur.execute(query, (boq_id,))
+            row = cur.fetchone()
+            
+            if row:
+                return {
+                    'boq_id': row[0],
+                    'file_name': row[1],
+                    'store_project_id': row[2],
+                    'project_name': row[3],
+                    'project_code': row[4],
+                    'created_at': row[5].isoformat() if row[5] else None
+                }
+            return None

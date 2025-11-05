@@ -20,3 +20,9 @@ class ProcessingResult(BaseModel):
     embedding_time: Optional[float] = None
     processing_time: Optional[float] = None
     error: Optional[str] = None
+
+class DeleteResponse(BaseModel):
+    success: bool
+    boq_id: int
+    deleted_counts: dict
+    message: str

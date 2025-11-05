@@ -1,6 +1,6 @@
 import psycopg2
 from psycopg2.extras import execute_values
-from typing import List, Dict
+from typing import List, Dict, Any, Optional
 from models.tbe_domain import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
 from core.settings import settings
 
@@ -204,3 +204,166 @@ class TBEBOQRepository:
                 })
             
             return items
+        
+    def delete_boq_by_id(self, boq_id: int) -> Dict[str, Any]:
+        """
+        Delete Estimate BOQ file and all related data.
+        Returns count of deleted records from each table.
+        """
+        try:
+            with self._get_connection() as conn, conn.cursor() as cur:
+                deleted_counts = {}
+                
+                # Get BOQ info before deletion
+                cur.execute("""
+                    SELECT ebf.boq_id, ebf.estimate_project_id, ebf.file_name
+                    FROM estimate_boq_files ebf
+                    WHERE ebf.boq_id = %s
+                """, (boq_id,))
+                
+                boq_info = cur.fetchone()
+                if not boq_info:
+                    return {
+                        'success': False,
+                        'error': f'Estimate BOQ file with ID {boq_id} not found'
+                    }
+                
+                estimate_project_id = boq_info[1]
+                file_name = boq_info[2]
+                
+                print(f"🗑️  Deleting Estimate BOQ: {file_name} (ID: {boq_id})")
+                
+                # Step 1: Delete BOQ items
+                cur.execute("""
+                    DELETE FROM estimate_boq_items 
+                    WHERE boq_id = %s
+                """, (boq_id,))
+                deleted_counts['boq_items'] = cur.rowcount
+                print(f"   ✓ Deleted {cur.rowcount} BOQ items")
+                
+                # Step 2: Delete BOQ file record
+                cur.execute("""
+                    DELETE FROM estimate_boq_files 
+                    WHERE boq_id = %s
+                """, (boq_id,))
+                deleted_counts['boq_file'] = cur.rowcount
+                print(f"   ✓ Deleted BOQ file record")
+                
+                # Step 3: Check if estimate project has other BOQ files
+                cur.execute("""
+                    SELECT COUNT(*) FROM estimate_boq_files 
+                    WHERE estimate_project_id = %s
+                """, (estimate_project_id,))
+                
+                remaining_boqs = cur.fetchone()[0]
+                
+                if remaining_boqs == 0:
+                    # Delete estimate project and related data if no other BOQs exist
+                    print(f"   No other BOQs found for estimate project {estimate_project_id}")
+                    
+                    # Get project_id before deleting estimate project
+                    cur.execute("""
+                        SELECT project_id FROM estimate_boq_projects 
+                        WHERE estimate_project_id = %s
+                    """, (estimate_project_id,))
+                    
+                    project_result = cur.fetchone()
+                    if project_result:
+                        project_id = project_result[0]
+                        
+                        # Delete locations
+                        cur.execute("""
+                            DELETE FROM estimate_boq_locations 
+                            WHERE estimate_project_id = %s
+                        """, (estimate_project_id,))
+                        deleted_counts['locations'] = cur.rowcount
+                        print(f"   ✓ Deleted {cur.rowcount} locations")
+                        
+                        # Delete estimate project
+                        cur.execute("""
+                            DELETE FROM estimate_boq_projects 
+                            WHERE estimate_project_id = %s
+                        """, (estimate_project_id,))
+                        deleted_counts['estimate_project'] = cur.rowcount
+                        print(f"   ✓ Deleted estimate project")
+                        
+                        # Check if project has other store/estimate projects
+                        cur.execute("""
+                            SELECT 
+                                (SELECT COUNT(*) FROM store_boq_projects WHERE project_id = %s) +
+                                (SELECT COUNT(*) FROM estimate_boq_projects WHERE project_id = %s)
+                        """, (project_id, project_id))
+                        
+                        remaining_projects = cur.fetchone()[0]
+                        
+                        if remaining_projects == 0:
+                            # Delete main project if no other references
+                            cur.execute("""
+                                DELETE FROM projects 
+                                WHERE project_id = %s
+                            """, (project_id,))
+                            deleted_counts['project'] = cur.rowcount
+                            print(f"   ✓ Deleted main project")
+                        else:
+                            print(f"   ℹ️  Main project retained (has other references)")
+                            deleted_counts['project'] = 0
+                    else:
+                        deleted_counts['locations'] = 0
+                        deleted_counts['estimate_project'] = 0
+                        deleted_counts['project'] = 0
+                else:
+                    print(f"   ℹ️  Estimate project retained ({remaining_boqs} other BOQ(s) exist)")
+                    deleted_counts['locations'] = 0
+                    deleted_counts['estimate_project'] = 0
+                    deleted_counts['project'] = 0
+                
+                conn.commit()
+                
+                print(f"✓ Successfully deleted Estimate BOQ {boq_id}")
+                
+                return {
+                    'success': True,
+                    'boq_id': boq_id,
+                    'deleted_counts': deleted_counts,
+                    'message': f'Estimate BOQ {boq_id} and related data deleted successfully'
+                }
+                
+        except Exception as e:
+            print(f"✗ Error deleting Estimate BOQ: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    def get_boq_info(self, boq_id: int) -> Optional[Dict]:
+        """Get Estimate BOQ file information."""
+        query = """
+            SELECT 
+                ebf.boq_id,
+                ebf.file_name,
+                ebf.estimate_project_id,
+                p.project_name,
+                p.project_code,
+                ebf.created_at
+            FROM estimate_boq_files ebf
+            JOIN estimate_boq_projects ebp ON ebf.estimate_project_id = ebp.estimate_project_id
+            JOIN projects p ON ebp.project_id = p.project_id
+            WHERE ebf.boq_id = %s
+        """
+        
+        with self._get_connection() as conn, conn.cursor() as cur:
+            cur.execute(query, (boq_id,))
+            row = cur.fetchone()
+            
+            if row:
+                return {
+                    'boq_id': row[0],
+                    'file_name': row[1],
+                    'estimate_project_id': row[2],
+                    'project_name': row[3],
+                    'project_code': row[4],
+                    'created_at': row[5].isoformat() if row[5] else None
+                }
+            return None

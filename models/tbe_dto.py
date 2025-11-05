@@ -3,17 +3,10 @@ from typing import Optional, List
 
 class TBEProcessingStatus(BaseModel):
     task_id: str
-    status: str  # pending, processing_file, generating_embeddings, fetching_prices, exporting_csv, completed, failed
+    status: str  # pending, processing_file, generating_embeddings, fetching_prices, exporting_excel, completed, failed
     message: str
     progress: Optional[float] = None
     current_step: Optional[str] = None
-
-class PriceStatistics(BaseModel):
-    avg: float
-    min: float
-    max: float
-    median: float
-    count: int
 
 class ItemWithPrice(BaseModel):
     item_id: int
@@ -21,14 +14,13 @@ class ItemWithPrice(BaseModel):
     description: str
     unit: str
     quantity: float
-    similar_items_found: int
-    supply_rate_stats: Optional[PriceStatistics]
-    labour_rate_stats: Optional[PriceStatistics]
     estimated_supply_rate: Optional[float]
     estimated_labour_rate: Optional[float]
     estimated_supply_total: Optional[float]
     estimated_labour_total: Optional[float]
     estimated_total: Optional[float]
+    pricing_source: Optional[str] = None  # NEW: Source information
+    similarity_score: Optional[float] = None  # NEW: How similar the match was
 
 class TBEProcessingResult(BaseModel):
     success: bool
@@ -52,10 +44,10 @@ class TBEProcessingResult(BaseModel):
     # Detailed Items with Prices
     items: List[ItemWithPrice] = []
     
-    # CSV Export fields
-    csv_available: Optional[bool] = None
-    csv_data: Optional[str] = None
-    csv_error: Optional[str] = None
+    # Excel Export fields
+    excel_available: Optional[bool] = None
+    excel_data: Optional[str] = None  # Base64 encoded Excel file
+    excel_error: Optional[str] = None
     
     # Timing
     file_processing_time: Optional[float] = None
@@ -67,3 +59,9 @@ class TBEProcessingResult(BaseModel):
     error: Optional[str] = None
     error_step: Optional[str] = None
     message: Optional[str] = None
+
+class DeleteResponse(BaseModel):
+    success: bool
+    boq_id: int
+    deleted_counts: dict
+    message: str

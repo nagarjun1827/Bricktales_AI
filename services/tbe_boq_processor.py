@@ -8,14 +8,12 @@ import requests
 import io
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from decimal import Decimal
-from statistics import median
 import pandas as pd
 import google.generativeai as genai
 
 from core.settings import settings
 from models.tbe_domain import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
-from models.tbe_dto import PriceStatistics, ItemWithPrice
+from models.tbe_dto import ItemWithPrice
 from repositories.tbe_boq_repository import TBEBOQRepository
 from repositories.price_repository import PriceRepository
 from services.pattern_matcher import PatternMatcher
@@ -82,7 +80,7 @@ class TBEBOQProcessor:
         self, 
         file_url: str, 
         uploaded_by: str = "system",
-        top_k: int = 5,
+        top_k: int = 1,
         min_similarity: float = 0.5
     ) -> Dict[str, Any]:
         """
@@ -91,8 +89,8 @@ class TBEBOQProcessor:
         Workflow:
         1. Download and process file from URL
         2. Generate embeddings for items
-        3. Fetch prices using similarity search
-        4. Return complete results
+        3. Fetch prices using similarity search (top 1 match only)
+        4. Return complete results with pricing source
         """
         print(f"\n{'='*80}")
         print(f"🚀 TBE BOQ PROCESSOR FROM URL WITH AUTOMATIC PRICE FETCHING")
@@ -143,7 +141,7 @@ class TBEBOQProcessor:
             
             # STEP 3: Fetch Prices Using Similarity Search
             print("=" * 80)
-            print("STEP 3: FETCHING PRICES USING SIMILARITY SEARCH")
+            print("STEP 3: FETCHING PRICES USING SIMILARITY SEARCH (TOP 1)")
             print("=" * 80)
             price_start = time.time()
             
@@ -286,7 +284,7 @@ class TBEBOQProcessor:
             import traceback
             traceback.print_exc()
             return {'success': False, 'error': str(e)}
-        
+    
     def _read_excel_from_url(self, file_url: str) -> Dict[str, pd.DataFrame]:
         """Read all sheets from Excel file at URL."""
         try:
@@ -368,7 +366,7 @@ class TBEBOQProcessor:
         top_k: int, 
         min_similarity: float
     ) -> Dict[str, Any]:
-        """Fetch prices for all items using similarity search."""
+        """Fetch prices for all items using similarity search (top 1 match only)."""
         try:
             # Get all items
             items = self.repo.get_tbe_items_by_boq(boq_id, limit=10000, offset=0)
@@ -376,7 +374,7 @@ class TBEBOQProcessor:
             if not items:
                 return {'success': False, 'error': 'No items found'}
             
-            print(f"🔍 Fetching prices for {len(items)} items...\n")
+            print(f"🔍 Fetching prices for {len(items)} items (top 1 match per item)...\n")
             
             items_with_prices = 0
             items_without_prices = 0
@@ -401,56 +399,55 @@ class TBEBOQProcessor:
                         description=description,
                         unit=unit,
                         quantity=quantity,
-                        similar_items_found=0,
-                        supply_rate_stats=None,
-                        labour_rate_stats=None,
                         estimated_supply_rate=None,
                         estimated_labour_rate=None,
                         estimated_supply_total=None,
                         estimated_labour_total=None,
-                        estimated_total=None
+                        estimated_total=None,
+                        pricing_source="No embedding generated",
+                        similarity_score=None
                     ))
                     continue
                 
                 query_embedding = self._embeddings_cache[item_id]
                 
-                # Find similar items
+                # Find similar items (top 1 only)
                 similar_items = self.price_repo.find_similar_items(
                     query_embedding=query_embedding,
                     unit=unit,
-                    limit=top_k,
+                    limit=top_k,  # Always 1
                     min_similarity=min_similarity
                 )
                 
                 if similar_items:
-                    print(f"  ✓ Found {len(similar_items)} similar items")
+                    # Take only the first (best) match
+                    best_match = similar_items[0]
+                    
+                    similarity_score = best_match['similarity']
+                    print(f"  ✓ Found match (similarity: {similarity_score:.3f})")
                     items_with_prices += 1
                     
-                    # Calculate statistics
-                    supply_stats = self._calculate_stats(
-                        [item['supply_rate'] for item in similar_items if item['supply_rate'] > 0]
-                    )
-                    labour_stats = self._calculate_stats(
-                        [item['labour_rate'] for item in similar_items if item['labour_rate'] > 0]
-                    )
-                    
-                    # Estimated rates
-                    estimated_supply_rate = supply_stats.avg if supply_stats else None
-                    estimated_labour_rate = labour_stats.avg if labour_stats else None
+                    # Use rates from the best match directly
+                    estimated_supply_rate = float(best_match['supply_rate']) if best_match['supply_rate'] > 0 else None
+                    estimated_labour_rate = float(best_match['labour_rate']) if best_match['labour_rate'] > 0 else None
                     
                     # Estimated totals
                     estimated_supply_total = estimated_supply_rate * quantity if estimated_supply_rate else None
                     estimated_labour_total = estimated_labour_rate * quantity if estimated_labour_rate else None
                     estimated_total = None
-                    if estimated_supply_total and estimated_labour_total:
+                    if estimated_supply_total is not None and estimated_labour_total is not None:
                         estimated_total = estimated_supply_total + estimated_labour_total
-                    elif estimated_supply_total:
+                    elif estimated_supply_total is not None:
                         estimated_total = estimated_supply_total
                     
-                    if supply_stats:
-                        print(f"  💰 Avg Supply Rate: ₹{supply_stats.avg:,.2f}/{unit}")
-                    if labour_stats:
-                        print(f"  💰 Avg Labour Rate: ₹{labour_stats.avg:,.2f}/{unit}")
+                    # Build pricing source explanation
+                    pricing_source = self._build_pricing_source(best_match, similarity_score)
+                    
+                    if estimated_supply_rate:
+                        print(f"  💰 Supply Rate: ₹{estimated_supply_rate:,.2f}/{unit}")
+                    if estimated_labour_rate:
+                        print(f"  💰 Labour Rate: ₹{estimated_labour_rate:,.2f}/{unit}")
+                    print(f"  📋 Source: {pricing_source}")
                     
                     result_items.append(ItemWithPrice(
                         item_id=item_id,
@@ -458,14 +455,13 @@ class TBEBOQProcessor:
                         description=description,
                         unit=unit,
                         quantity=quantity,
-                        similar_items_found=len(similar_items),
-                        supply_rate_stats=supply_stats,
-                        labour_rate_stats=labour_stats,
                         estimated_supply_rate=estimated_supply_rate,
                         estimated_labour_rate=estimated_labour_rate,
                         estimated_supply_total=estimated_supply_total,
                         estimated_labour_total=estimated_labour_total,
-                        estimated_total=estimated_total
+                        estimated_total=estimated_total,
+                        pricing_source=pricing_source,
+                        similarity_score=round(similarity_score, 3)
                     ))
                 else:
                     print(f"  ⚠️  No similar items found")
@@ -476,14 +472,13 @@ class TBEBOQProcessor:
                         description=description,
                         unit=unit,
                         quantity=quantity,
-                        similar_items_found=0,
-                        supply_rate_stats=None,
-                        labour_rate_stats=None,
                         estimated_supply_rate=None,
                         estimated_labour_rate=None,
                         estimated_supply_total=None,
                         estimated_labour_total=None,
-                        estimated_total=None
+                        estimated_total=None,
+                        pricing_source=f"No similar items found (min similarity: {min_similarity})",
+                        similarity_score=None
                     ))
             
             # Clean up cache
@@ -503,20 +498,21 @@ class TBEBOQProcessor:
             traceback.print_exc()
             return {'success': False, 'error': str(e)}
     
-    def _calculate_stats(self, rates: List[float]) -> Optional[PriceStatistics]:
-        """Calculate price statistics."""
-        if not rates:
-            return None
+    @staticmethod
+    def _build_pricing_source(match: dict, similarity: float) -> str:
+        """Build a descriptive pricing source explanation."""
+        project = match.get('project_name', 'Unknown Project')
+        file = match.get('file_name', 'Unknown File')
+        item_desc = match.get('description', 'Unknown Item')
+        item_code = match.get('item_code', 'N/A')
         
-        rates_float = [float(r) if isinstance(r, Decimal) else r for r in rates]
+        # Truncate description if too long
+        if len(item_desc) > 50:
+            item_desc = item_desc[:47] + "..."
         
-        return PriceStatistics(
-            avg=sum(rates_float) / len(rates_float),
-            min=min(rates_float),
-            max=max(rates_float),
-            median=median(rates_float),
-            count=len(rates_float)
-        )
+        source = f"Matched with '{item_desc}' (Code: {item_code}) from project '{project}' (Similarity: {similarity:.1%})"
+        
+        return source
     
     def _process_metadata(self, df: pd.DataFrame, uploaded_by: str) -> tuple:
         """Extract and save project/estimate project/location."""
