@@ -318,12 +318,12 @@ curl -X POST "http://localhost:8000/embeddings/search" \
 - `GET /boq/status/{task_id}` - Check processing status
 - `GET /boq/result/{task_id}` - Get processing results
 
-### TBE BOQ Processing (`/tbe-boq`)
-- `POST /tbe-boq/upload` - Upload BOQ without rates
-- `GET /tbe-boq/status/{task_id}` - Check processing status
-- `GET /tbe-boq/result/{task_id}` - Get processing results
-- `GET /tbe-boq/items/{boq_id}` - Retrieve TBE items
-- `GET /tbe-boq/summary/{boq_id}` - Get BOQ summary
+### TBE BOQ Processing (`/estimate`)
+- `POST /estimate/upload` - Upload BOQ without rates
+- `GET /estimate/status/{task_id}` - Check processing status
+- `GET /estimate/result/{task_id}` - Get processing results
+- `GET /estimate/items/{boq_id}` - Retrieve TBE items
+- `GET /estimate/summary/{boq_id}` - Get BOQ summary
 
 ### Embeddings (`/embeddings`)
 - `POST /embeddings/initialize` - Initialize vector database

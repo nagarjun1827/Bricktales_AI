@@ -10,11 +10,10 @@ import shutil
 import csv
 import io
 
-router = APIRouter(prefix="/tbe-boq", tags=["To-Be-Estimated BOQ Processing"])
+router = APIRouter(prefix="/estimate-boq", tags=["Estimate BOQ Processing"])
 
 UPLOAD_DIR = Path(settings.UPLOAD_DIR) / "tbe"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def background_tbe_process(
     task_id: str, 
@@ -116,7 +115,7 @@ async def upload_tbe_file(
     )
 
 
-@router.get("/status/{task_id}", response_model=TBEProcessingStatus, summary="Get processing status")
+@router.get("/status/{task_id}", response_model=TBEProcessingStatus, summary="Get status")
 async def get_tbe_status(task_id: str):
     """
     Get the status of a TBE BOQ processing task.
@@ -141,7 +140,7 @@ async def get_tbe_status(task_id: str):
     )
 
 
-@router.get("/result/{task_id}", response_model=TBEProcessingResult, summary="Get processing result")
+@router.get("/result/{task_id}", response_model=TBEProcessingResult, summary="Get result")
 async def get_tbe_result(task_id: str):
     """
     Get the detailed result of a completed TBE BOQ processing task.

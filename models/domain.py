@@ -11,7 +11,7 @@ class ProjectInfo:
     """Project information."""
     project_name: str
     project_code: str
-    project_type: str = "boq"  # 'tender' or 'boq'
+    project_type: str = "boq"
     client_name: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
