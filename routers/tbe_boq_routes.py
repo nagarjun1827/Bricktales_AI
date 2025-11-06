@@ -17,7 +17,7 @@ class EstimateBOQURLRequest(BaseModel):
     file_url: HttpUrl
     uploaded_by: str = "system"
     min_similarity: float = 0.5
-    export_excel: bool = False
+    export_excel: bool = True
 
 
 def background_tbe_process(
@@ -25,7 +25,7 @@ def background_tbe_process(
     file_url: str, 
     uploaded_by: str,
     min_similarity: float,
-    export_excel: bool = False
+    export_excel: bool = True
 ):
     """Background task for processing TBE BOQ with automatic price fetching"""
     try:

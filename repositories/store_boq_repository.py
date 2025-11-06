@@ -190,15 +190,35 @@ class StoreBOQRepository:
             execute_values(cur, query, items_data)
             conn.commit()
 
-    def get_boq_totals(self, boq_id: int) -> Dict[str, float]:
+    def get_boq_totals(self, boq_id: int, items: List[BOQItem] = None) -> Dict[str, float]:
         """
-        Get BOQ totals from database.
+        Get BOQ totals from database or calculate from items list.
         
-        The amounts are calculated by the database using GENERATED columns:
-        - supply_amount = quantity * supply_unit_rate
-        - labour_amount = quantity * labour_unit_rate
-        - total_amount = supply_amount + labour_amount
+        Args:
+            boq_id: BOQ file ID
+            items: Optional list of BOQItem objects to calculate from
+            
+        Returns:
+            Dictionary with item_count, total_supply, total_labour, total_amount
         """
+        if items:
+            # Calculate from provided items (fallback when database hasn't computed yet)
+            totals = {
+                "item_count": len(items),
+                "total_supply": sum(item.supply_amount for item in items),
+                "total_labour": sum(item.labour_amount for item in items),
+                "total_amount": sum(item.total_amount for item in items),
+            }
+            
+            print(f"   Calculated totals from {len(items)} items:")
+            print(f"   - Item Count:    {totals['item_count']}")
+            print(f"   - Supply Amount: ₹{totals['total_supply']:,.2f}")
+            print(f"   - Labour Amount: ₹{totals['total_labour']:,.2f}")
+            print(f"   - Total Amount:  ₹{totals['total_amount']:,.2f}")
+            
+            return totals
+        
+        # Query from database (when items not provided)
         query = """
             SELECT 
                 COUNT(*) as item_count,
