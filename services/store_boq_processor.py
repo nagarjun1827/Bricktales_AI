@@ -87,7 +87,7 @@ class StoreBOQProcessor:
 
             # Step 10: Get totals
             print("📊 Step 10: Calculating totals...")
-            totals = self.repo.get_boq_totals(boq_id)
+            totals = self.repo.get_boq_totals(boq_id, all_items)
 
             # Step 11: Generate embeddings
             embedding_result = self._generate_embeddings(boq_id, all_items)
