@@ -4,7 +4,7 @@ Item extraction agent for BOQ processing.
 import pandas as pd
 import re
 from typing import List, Optional, Any
-from models.domain import BOQItem
+from models.store_boq import BOQItem
 
 
 class ItemExtractorAgent:

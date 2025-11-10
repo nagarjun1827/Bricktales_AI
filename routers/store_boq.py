@@ -1,21 +1,10 @@
-"""
-API routes for store BOQ processing.
-"""
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
-from pydantic import BaseModel, HttpUrl
-from models.dto import ProcessingStatus, ProcessingResult, DeleteResponse
-from services.store_boq_processor import StoreBOQProcessor
+from dto.request_dto.store_boq import StoreBOQURLRequest, ProcessingStatus, ProcessingResult, DeleteResponse
+from services.store_boq import StoreBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
 
 router = APIRouter(prefix="/store-boq", tags=["Store BOQ Processing"])
-
-
-class StoreBOQURLRequest(BaseModel):
-    """Request model for Store BOQ URL upload"""
-    file_url: HttpUrl
-    uploaded_by: str = "system"
-
 
 def process_boq_background(task_id: str, file_url: str, uploaded_by: str):
     """Background task for BOQ processing from URL."""
@@ -54,11 +43,12 @@ async def upload_store_boq_url(
     4. Return complete results
     
     **Request Body:**
-```json
-{
-        "file_url": "https://example.com/boq.xlsx",
-        "uploaded_by": "user"
-    }
+    ```json
+        {
+            "file_url": "https://example.com/boq.xlsx",
+            "uploaded_by": "user"
+        }
+        
     **Returns:**
     - Task ID for tracking progress
     - Use `/status/{task_id}` to check progress
@@ -144,7 +134,7 @@ async def delete_store_boq(boq_id: int):
     **Note:** This operation cannot be undone. Make sure you want to permanently delete this data.
     """
     try:
-        from services.store_boq_processor import StoreBOQProcessor
+        from services.store_boq import StoreBOQProcessor
         
         processor = StoreBOQProcessor()
         
@@ -191,7 +181,7 @@ async def get_store_boq_info(boq_id: int):
     - BOQ ID, file name, project details, creation date
     """
     try:
-        from services.store_boq_processor import StoreBOQProcessor
+        from services.store_boq import StoreBOQProcessor
         
         processor = StoreBOQProcessor()
         boq_info = processor.repo.get_boq_info(boq_id)

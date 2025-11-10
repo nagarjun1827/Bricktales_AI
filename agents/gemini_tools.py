@@ -18,7 +18,7 @@ if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY is not set in environment variables.")
 
 genai.configure(api_key=GEMINI_API_KEY)
-GEMINI_MODEL = "gemini-2.0-flash-exp"
+GEMINI_MODEL = "gemini-2.5-flash"
 
 
 def clean_json_response(text: str) -> str:

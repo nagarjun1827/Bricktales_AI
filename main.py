@@ -2,8 +2,8 @@
 QuoCo BOQ Processing API
 """
 from fastapi import FastAPI
-from routers.tbe_boq_routes import router as tbe_boq_router
-from routers.store_boq_routes import router as store_boq_router
+from routers.estimate_boq import router as tbe_boq_router
+from routers.store_boq import router as store_boq_router
 
 app = FastAPI(
     title="QuoCo BOQ API",

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, HttpUrl
-from models.tbe_dto import TBEProcessingStatus, TBEProcessingResult, DeleteResponse
-from services.tbe_boq_processor import TBEBOQProcessor
+from dto.request_dto.estimate_boq import TBEProcessingStatus, TBEProcessingResult, DeleteResponse
+from services.estimate_boq import TBEBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
 import io
@@ -412,7 +412,7 @@ async def delete_estimate_boq(boq_id: int):
     **Note:** This operation cannot be undone. Make sure you want to permanently delete this data.
     """
     try:
-        from services.tbe_boq_processor import TBEBOQProcessor
+        from services.estimate_boq import TBEBOQProcessor
         
         processor = TBEBOQProcessor()
         
@@ -459,7 +459,7 @@ async def get_estimate_boq_info(boq_id: int):
     - BOQ ID, file name, project details, creation date
     """
     try:
-        from services.tbe_boq_processor import TBEBOQProcessor
+        from services.estimate_boq import TBEBOQProcessor
         
         processor = TBEBOQProcessor()
         boq_info = processor.repo.get_boq_info(boq_id)

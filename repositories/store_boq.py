@@ -4,7 +4,7 @@ Repository for store BOQ database operations.
 import psycopg2
 from psycopg2.extras import execute_values
 from typing import List, Dict, Any, Optional
-from models.domain import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo, BOQItem
+from models.store_boq import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo, BOQItem
 from core.settings import settings
 
 

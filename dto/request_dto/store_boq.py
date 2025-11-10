@@ -1,5 +1,10 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 from typing import Optional
+
+class StoreBOQURLRequest(BaseModel):
+    """Request model for Store BOQ URL upload"""
+    file_url: HttpUrl
+    uploaded_by: str = "system"
 
 class ProcessingStatus(BaseModel):
     task_id: str
