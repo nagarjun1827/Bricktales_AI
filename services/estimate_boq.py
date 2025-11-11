@@ -13,7 +13,7 @@ import google.generativeai as genai
 
 from core.settings import settings
 from models.estimate_boq import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
-from dto.request_dto.estimate_boq import ItemWithPrice
+from dto.response_dto.estimate_boq import ItemWithPrice
 from repositories.estimate_boq import TBEBOQRepository
 from repositories.price import PriceRepository
 from services.pattern_matcher import PatternMatcher
@@ -79,7 +79,7 @@ class TBEBOQProcessor:
     def process_file_from_url(
         self, 
         file_url: str, 
-        uploaded_by: str = "system",
+        uploaded_by: str = "user",
         top_k: int = 1,
         min_similarity: float = 0.5
     ) -> Dict[str, Any]:
@@ -226,12 +226,12 @@ class TBEBOQProcessor:
             )
             
             # Create BOQ file
-            print("💾 Creating TBE BOQ file record...")
+            print("Creating TBE BOQ file record...")
             boq_id = self._create_boq_file(estimate_project_id, file_url, uploaded_by)
             print(f"   ✓ BOQ ID: {boq_id}\n")
             
             # Extract items
-            print("📊 Extracting items...")
+            print("Extracting items...")
             all_items = []
             for name, df in sheets.items():
                 if self._should_skip_sheet(name, df):
@@ -241,7 +241,7 @@ class TBEBOQProcessor:
                 all_items.extend(items)
             
             # Insert items with error handling
-            print(f"\n💾 Inserting {len(all_items)} items...")
+            print(f"\n Inserting {len(all_items)} items...")
             
             if not all_items:
                 return {
@@ -374,7 +374,7 @@ class TBEBOQProcessor:
             if not items:
                 return {'success': False, 'error': 'No items found'}
             
-            print(f"🔍 Fetching prices for {len(items)} items (top 1 match per item)...\n")
+            print(f" Fetching prices for {len(items)} items (top 1 match per item)...\n")
             
             items_with_prices = 0
             items_without_prices = 0

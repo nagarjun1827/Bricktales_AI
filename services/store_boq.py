@@ -38,7 +38,7 @@ class StoreBOQProcessor:
     def process_file_from_url(
         self, 
         file_url: str, 
-        uploaded_by: str = "system"
+        uploaded_by: str = "user"
     ) -> Dict[str, Any]:
         """
         Process store BOQ file from URL with automatic embedding generation.
@@ -71,22 +71,22 @@ class StoreBOQProcessor:
             )
 
             # Step 7: Create BOQ file record
-            print("💾 Step 7: Creating BOQ file record...")
+            print("Step 7: Creating BOQ file record...")
             boq_id = self._create_boq_file(store_project_id, file_url, uploaded_by)
             print(f"   ✓ BOQ ID: {boq_id}\n")
 
             # Step 8: Process sheets and extract items
-            print("📊 Step 8: Processing sheets and extracting items...")
+            print(" Step 8: Processing sheets and extracting items...")
             boq_sheets = self._filter_sheets(sheets)
             all_items = self._extract_all_items(boq_sheets, boq_id, location_id)
 
             # Step 9: Insert items
-            print(f"\n💾 Step 9: Inserting {len(all_items)} items...")
+            print(f"\n Step 9: Inserting {len(all_items)} items...")
             self.repo.insert_boq_items_batch(all_items)
             print(f"   ✓ Items inserted\n")
 
             # Step 10: Get totals
-            print("📊 Step 10: Calculating totals...")
+            print(" Step 10: Calculating totals...")
             totals = self.repo.get_boq_totals(boq_id, all_items)
 
             # Step 11: Generate embeddings
@@ -146,7 +146,7 @@ class StoreBOQProcessor:
 
     def _process_metadata(self, first_sheet: pd.DataFrame, uploaded_by: str) -> tuple:
         """Extract and save project, store project, and location metadata."""
-        print("🔍 Step 2: Extracting project information...")
+        print(" Step 2: Extracting project information...")
         text_sample = self._extract_text(first_sheet, 50)
         
         # Extract project
@@ -157,12 +157,12 @@ class StoreBOQProcessor:
         print(f"   ✓ Project: {project_info.project_name}")
         
         # Insert project
-        print("\n💾 Step 3: Saving project...")
+        print("\n Step 3: Saving project...")
         project_id = self.repo.insert_project(project_info)
         print(f"   ✓ Project ID: {project_id}")
         
         # Create store BOQ project
-        print("\n💾 Step 4: Creating store BOQ project...")
+        print("\n Step 4: Creating store BOQ project...")
         store_project_info = self._build_store_project_info(
             project_id, project_data, uploaded_by
         )
@@ -170,7 +170,7 @@ class StoreBOQProcessor:
         print(f"   ✓ Store Project ID: {store_project_id}")
         
         # Extract location
-        print("\n🔍 Step 5: Extracting location...")
+        print("\n Step 5: Extracting location...")
         location_json = self.location_tool._run(text_sample)
         location_data = json.loads(location_json)
         location_info = self._build_location_info(location_data, store_project_id)
@@ -178,7 +178,7 @@ class StoreBOQProcessor:
         print(f"   ✓ Location: {location_info.location_name}")
         
         # Insert location
-        print("\n💾 Step 6: Saving location...")
+        print("\n Step 6: Saving location...")
         location_id = self.repo.insert_location(location_info)
         print(f"   ✓ Location ID: {location_id}\n")
         

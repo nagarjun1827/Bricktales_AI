@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
-from dto.request_dto.store_boq import StoreBOQURLRequest, ProcessingStatus, ProcessingResult, DeleteResponse
+from dto.request_dto.store_boq import StoreBOQURLRequest
+from dto.response_dto.store_boq import ProcessingStatus, ProcessingResult, DeleteResponse
 from services.store_boq import StoreBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
@@ -45,7 +46,7 @@ async def upload_store_boq_url(
     **Request Body:**
     ```json
         {
-            "file_url": "https://example.com/boq.xlsx",
+            "file_url": "http://35.200.254.142:3000/uploads/1/ff89023ef5fa510d067f28ef121d5c45.xlsx",
             "uploaded_by": "user"
         }
         

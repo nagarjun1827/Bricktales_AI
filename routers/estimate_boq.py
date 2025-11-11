@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, HttpUrl
-from dto.request_dto.estimate_boq import TBEProcessingStatus, TBEProcessingResult, DeleteResponse
+from dto.request_dto.estimate_boq import EstimateBOQURLRequest
+from dto. response_dto.estimate_boq import TBEProcessingStatus, TBEProcessingResult, DeleteResponse
 from services.estimate_boq import TBEBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
@@ -10,15 +11,6 @@ import base64
 import pandas as pd
 
 router = APIRouter(prefix="/estimate-boq", tags=["Estimate BOQ Processing"])
-
-
-class EstimateBOQURLRequest(BaseModel):
-    """Request model for Estimate BOQ URL upload"""
-    file_url: HttpUrl
-    uploaded_by: str = "system"
-    min_similarity: float = 0.5
-    export_excel: bool = True
-
 
 def background_tbe_process(
     task_id: str, 
@@ -198,7 +190,7 @@ async def upload_estimate_boq_url(
     **Request Body:**
 ```json
         {
-            "file_url": "https://example.com/estimate_boq.xlsx",
+            "file_url": "http://35.200.254.142:3000/uploads/1/d0746c9a18f05c96ce5ebee135afd362.xlsx",
             "uploaded_by": "user",
             "min_similarity": 0.5,
             "export_excel": true

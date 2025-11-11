@@ -2,7 +2,7 @@
 QuoCo BOQ Processing API
 """
 from fastapi import FastAPI
-from routers.estimate_boq import router as tbe_boq_router
+from routers.estimate_boq import router as estimate_boq_router
 from routers.store_boq import router as store_boq_router
 
 app = FastAPI(
@@ -12,7 +12,7 @@ app = FastAPI(
 )
 
 app.include_router(store_boq_router)
-app.include_router(tbe_boq_router)
+app.include_router(estimate_boq_router)
 
 @app.get("/")
 def root():

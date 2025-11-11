@@ -4,6 +4,7 @@ Gemini AI tools for BOQ data extraction.
 import os
 import re
 import json
+import logging
 import google.generativeai as genai
 from typing import Type
 from pydantic import BaseModel, Field
@@ -11,6 +12,8 @@ from langchain.tools import BaseTool
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Configure Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -76,6 +79,7 @@ Return ONLY valid JSON:
             response = model.generate_content(prompt)
             return clean_json_response(response.text)
         except Exception as e:
+            logger.error(f"Sheet structure analysis failed: {e}")
             return json.dumps({"error": f"Analysis failed: {str(e)}"})
 
 
@@ -113,6 +117,7 @@ Return ONLY valid JSON."""
             response = model.generate_content(prompt)
             return clean_json_response(response.text)
         except Exception as e:
+            logger.error(f"Project info extraction failed: {e}")
             return json.dumps({"error": f"Extraction failed: {str(e)}"})
 
 
@@ -148,4 +153,5 @@ Return ONLY valid JSON."""
             response = model.generate_content(prompt)
             return clean_json_response(response.text)
         except Exception as e:
+            logger.error(f"Location info extraction failed: {e}")
             return json.dumps({"error": f"Extraction failed: {str(e)}"})

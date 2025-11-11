@@ -1,10 +1,13 @@
 """
 Item extraction agent for BOQ processing.
 """
+import logging
 import pandas as pd
 import re
 from typing import List, Optional, Any
 from models.store_boq import BOQItem
+
+logger = logging.getLogger(__name__)
 
 
 class ItemExtractorAgent:
@@ -18,13 +21,13 @@ class ItemExtractorAgent:
         location_id: int
     ) -> List[BOQItem]:
         """Extract BOQ items from dataframe."""
-        print(f"      Extracting items with intelligent parsing...")
+        logger.info("Extracting items with intelligent parsing...")
         
         data_start = structure['data_start_row']
         column_structure = structure['column_structure']
         
         col_map = {col['type']: col['position'] for col in column_structure}
-        print(f"      Column mapping: {col_map}")
+        logger.debug(f"Column mapping: {col_map}")
         
         items = []
         data_df = df.iloc[data_start:].reset_index(drop=True)
@@ -55,7 +58,7 @@ class ItemExtractorAgent:
             if rate == 0 and quantity > 0 and amount > 0:
                 rate = round(amount / quantity, 2)
             
-            # Create item (amounts will be auto-calculated in __post_init__)
+            # Create item
             item = BOQItem(
                 boq_id=boq_id,
                 item_code=str(item_code) if item_code is not None else None,
@@ -63,23 +66,23 @@ class ItemExtractorAgent:
                 unit_of_measurement=self._normalize_unit(unit),
                 quantity=quantity,
                 supply_unit_rate=rate,
-                labour_unit_rate=0.0,  # Can be extracted if column exists
+                labour_unit_rate=0.0,
                 location_id=location_id,
                 created_by='system'
             )
             
             items.append(item)
         
-        print(f"      Extracted {len(items)} valid items")
+        logger.info(f"Extracted {len(items)} valid items")
         
-        # Print summary of amounts
+        # Calculate summary
         total_supply = sum(item.supply_amount for item in items)
         total_labour = sum(item.labour_amount for item in items)
         total_amount = sum(item.total_amount for item in items)
         
-        print(f"      Supply Total: ₹{total_supply:,.2f}")
-        print(f"      Labour Total: ₹{total_labour:,.2f}")
-        print(f"      Grand Total:  ₹{total_amount:,.2f}")
+        logger.info(f"Supply Total: ₹{total_supply:,.2f}")
+        logger.info(f"Labour Total: ₹{total_labour:,.2f}")
+        logger.info(f"Grand Total: ₹{total_amount:,.2f}")
         
         return items
     
