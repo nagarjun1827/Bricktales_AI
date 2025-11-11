@@ -6,6 +6,7 @@ import re
 import json
 import requests
 import io
+import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import pandas as pd
@@ -17,6 +18,8 @@ from dto.response_dto.estimate_boq import ItemWithPrice
 from repositories.estimate_boq import TBEBOQRepository
 from repositories.price import PriceRepository
 from services.pattern_matcher import PatternMatcher
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiExtractor:
@@ -92,19 +95,13 @@ class TBEBOQProcessor:
         3. Fetch prices using similarity search (top 1 match only)
         4. Return complete results with pricing source
         """
-        print(f"\n{'='*80}")
-        print(f"🚀 TBE BOQ PROCESSOR FROM URL WITH AUTOMATIC PRICE FETCHING")
-        print(f"{'='*80}")
-        print(f"URL: {file_url}")
-        print(f"Top K: {top_k}, Min Similarity: {min_similarity}\n")
+        logger.info(f"Estimate file URL: {file_url}")
+        logger.info(f"Top K: {top_k}, Min Similarity: {min_similarity}")
         
         start_time = time.time()
         
         try:
-            # STEP 1: Process TBE BOQ File from URL
-            print("=" * 80)
-            print("STEP 1: PROCESSING TBE BOQ FILE FROM URL")
-            print("=" * 80)
+            logger.info("Step 1: Downloading and reading Excel file from URL")
             file_start = time.time()
             
             tbe_result = self._process_tbe_file_from_url(file_url, uploaded_by)
@@ -113,7 +110,7 @@ class TBEBOQProcessor:
                 return tbe_result
             
             file_time = time.time() - file_start
-            print(f"\n✓ File processing completed in {file_time:.2f}s\n")
+            logger.info(f"File processing completed in {file_time:.2f}s")
             
             boq_id = tbe_result['boq_id']
             project_id = tbe_result['project_id']
@@ -122,9 +119,7 @@ class TBEBOQProcessor:
             total_items = tbe_result['total_items']
             
             # STEP 2: Generate Embeddings for Items
-            print("=" * 80)
-            print("STEP 2: GENERATING EMBEDDINGS FOR ITEMS")
-            print("=" * 80)
+            logger.info("Step 2: Generating Embeddings for Items")
             embedding_start = time.time()
             
             embedding_result = self._generate_embeddings_for_items(boq_id)
@@ -137,12 +132,10 @@ class TBEBOQProcessor:
                 }
             
             embedding_time = time.time() - embedding_start
-            print(f"\n✓ Embedding generation completed in {embedding_time:.2f}s\n")
+            logger.info(f"Embedding generation completed in {embedding_time:.2f}s")
             
             # STEP 3: Fetch Prices Using Similarity Search
-            print("=" * 80)
-            print("STEP 3: FETCHING PRICES USING SIMILARITY SEARCH (TOP 1)")
-            print("=" * 80)
+            logger.info("Step 3: Fetching Prices Using Similarity Search")
             price_start = time.time()
             
             price_result = self._fetch_prices_for_items(
@@ -157,7 +150,7 @@ class TBEBOQProcessor:
                 }
             
             price_time = time.time() - price_start
-            print(f"\n✓ Price fetching completed in {price_time:.2f}s\n")
+            logger.info(f"Price fetching completed in {price_time:.2f}s")
             
             # Calculate totals
             total_estimated_supply = sum(
@@ -175,8 +168,8 @@ class TBEBOQProcessor:
             
             total_time = time.time() - start_time
             
-            # Print final summary
-            self._print_final_summary(
+            # Log final summary
+            self._log_final_summary(
                 project_id, estimate_project_id, location_id, boq_id,
                 total_items, price_result['items_with_prices'],
                 price_result['items_without_prices'],
@@ -206,18 +199,16 @@ class TBEBOQProcessor:
             }
             
         except Exception as e:
-            print(f"\n✗ Error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Processing failed: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
     
     def _process_tbe_file_from_url(self, file_url: str, uploaded_by: str) -> Dict[str, Any]:
         """Process TBE BOQ file from URL and extract items."""
         try:
             # Read file from URL
-            print("📥 Downloading and reading Excel file from URL...")
+            logger.info("Downloading and reading Excel file from URL")
             sheets = self._read_excel_from_url(file_url)
-            print(f"   ✓ Read {len(sheets)} sheets\n")
+            logger.info(f"Read {len(sheets)} sheets")
             
             # Extract metadata
             first_sheet = list(sheets.values())[0]
@@ -226,22 +217,21 @@ class TBEBOQProcessor:
             )
             
             # Create BOQ file
-            print("Creating TBE BOQ file record...")
             boq_id = self._create_boq_file(estimate_project_id, file_url, uploaded_by)
-            print(f"   ✓ BOQ ID: {boq_id}\n")
+            logger.info(f"BOQ ID: {boq_id}")
             
             # Extract items
-            print("Extracting items...")
+            logger.info("Extracting items")
             all_items = []
             for name, df in sheets.items():
                 if self._should_skip_sheet(name, df):
                     continue
-                print(f"   📄 {name}")
+                logger.info(f"Processing sheet: {name}")
                 items = self._extract_items(df, boq_id, location_id)
                 all_items.extend(items)
             
             # Insert items with error handling
-            print(f"\n Inserting {len(all_items)} items...")
+            logger.info(f"Inserting {len(all_items)} items")
             
             if not all_items:
                 return {
@@ -251,11 +241,9 @@ class TBEBOQProcessor:
             
             try:
                 self.repo.insert_tbe_items_batch(all_items)
-                print(f"   ✓ Items inserted successfully\n")
+                logger.info("Items inserted successfully")
             except Exception as insert_error:
-                print(f"   ✗ Insert failed: {insert_error}")
-                import traceback
-                traceback.print_exc()
+                logger.error(f"Insert failed: {insert_error}", exc_info=True)
                 return {
                     'success': False,
                     'error': f'Failed to insert items: {str(insert_error)}'
@@ -264,10 +252,9 @@ class TBEBOQProcessor:
             # Summary
             try:
                 summary = self.repo.get_tbe_boq_summary(boq_id)
-                print(f"   ✓ Summary retrieved: {summary['item_count']} items\n")
+                logger.info(f"Summary retrieved: {summary['item_count']} items")
             except Exception as summary_error:
-                print(f"   ⚠️  Summary retrieval failed: {summary_error}")
-                # Use fallback count
+                logger.warning(f"Summary retrieval failed: {summary_error}")
                 summary = {'item_count': len(all_items)}
             
             return {
@@ -280,20 +267,18 @@ class TBEBOQProcessor:
             }
             
         except Exception as e:
-            print(f"\n✗ File processing error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"File processing error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
     
     def _read_excel_from_url(self, file_url: str) -> Dict[str, pd.DataFrame]:
         """Read all sheets from Excel file at URL."""
         try:
-            print(f"   Fetching file from URL...")
+            logger.info("Fetching file from URL")
             response = requests.get(file_url, timeout=120)
             response.raise_for_status()
             
-            print(f"   File downloaded ({len(response.content)} bytes)")
-            print(f"   Reading Excel sheets...")
+            logger.info(f"File downloaded ({len(response.content)} bytes)")
+            logger.info("Reading Excel sheets")
             
             # Read Excel from bytes
             excel_file = pd.ExcelFile(io.BytesIO(response.content))
@@ -318,7 +303,7 @@ class TBEBOQProcessor:
             if not items:
                 return {'success': False, 'error': 'No items found to generate embeddings'}
             
-            print(f"📝 Generating embeddings for {len(items)} items...")
+            logger.info(f"Generating embeddings for {len(items)} items")
             
             batch_size = 100
             embeddings_map = {}  # item_id -> embedding
@@ -328,7 +313,7 @@ class TBEBOQProcessor:
                 batch_num = (i // batch_size) + 1
                 total_batches = (len(items) + batch_size - 1) // batch_size
                 
-                print(f"   Batch {batch_num}/{total_batches} ({len(batch)} items)...")
+                logger.info(f"Batch {batch_num}/{total_batches} ({len(batch)} items)")
                 
                 for item in batch:
                     try:
@@ -339,12 +324,12 @@ class TBEBOQProcessor:
                         )
                         embeddings_map[item['item_id']] = result['embedding']
                     except Exception as e:
-                        print(f"      ⚠ Failed for item {item['item_id']}: {e}")
+                        logger.warning(f"Failed for item {item['item_id']}: {e}")
                         continue
                 
-                print(f"   ✓ Generated {len(batch)} embeddings")
+                logger.info(f"Generated {len(batch)} embeddings")
             
-            print(f"\n✓ Total embeddings generated: {len(embeddings_map)}")
+            logger.info(f"Total embeddings generated: {len(embeddings_map)}")
             
             # Store embeddings temporarily in class instance for price fetching
             self._embeddings_cache = embeddings_map
@@ -355,9 +340,7 @@ class TBEBOQProcessor:
             }
             
         except Exception as e:
-            print(f"\n✗ Embedding generation error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Embedding generation error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
     
     def _fetch_prices_for_items(
@@ -374,7 +357,7 @@ class TBEBOQProcessor:
             if not items:
                 return {'success': False, 'error': 'No items found'}
             
-            print(f" Fetching prices for {len(items)} items (top 1 match per item)...\n")
+            logger.info(f"Fetching prices for {len(items)} items (top 1 match per item)")
             
             items_with_prices = 0
             items_without_prices = 0
@@ -387,11 +370,11 @@ class TBEBOQProcessor:
                 quantity = item['quantity']
                 item_code = item['item_code']
                 
-                print(f"[{idx}/{len(items)}] {item_code or 'N/A'}: {description[:60]}...")
+                logger.debug(f"[{idx}/{len(items)}] {item_code or 'N/A'}: {description[:60]}")
                 
                 # Get embedding from cache
                 if not hasattr(self, '_embeddings_cache') or item_id not in self._embeddings_cache:
-                    print(f"  ⚠️  No embedding found, skipping")
+                    logger.warning(f"No embedding found for item {item_id}, skipping")
                     items_without_prices += 1
                     result_items.append(ItemWithPrice(
                         item_id=item_id,
@@ -424,7 +407,7 @@ class TBEBOQProcessor:
                     best_match = similar_items[0]
                     
                     similarity_score = best_match['similarity']
-                    print(f"  ✓ Found match (similarity: {similarity_score:.3f})")
+                    logger.debug(f"Found match (similarity: {similarity_score:.3f})")
                     items_with_prices += 1
                     
                     # Use rates from the best match directly
@@ -444,10 +427,10 @@ class TBEBOQProcessor:
                     pricing_source = self._build_pricing_source(best_match, similarity_score)
                     
                     if estimated_supply_rate:
-                        print(f"  💰 Supply Rate: ₹{estimated_supply_rate:,.2f}/{unit}")
+                        logger.debug(f"Supply Rate: ₹{estimated_supply_rate:,.2f}/{unit}")
                     if estimated_labour_rate:
-                        print(f"  💰 Labour Rate: ₹{estimated_labour_rate:,.2f}/{unit}")
-                    print(f"  📋 Source: {pricing_source}")
+                        logger.debug(f"Labour Rate: ₹{estimated_labour_rate:,.2f}/{unit}")
+                    logger.debug(f"Source: {pricing_source}")
                     
                     result_items.append(ItemWithPrice(
                         item_id=item_id,
@@ -464,7 +447,7 @@ class TBEBOQProcessor:
                         similarity_score=round(similarity_score, 3)
                     ))
                 else:
-                    print(f"  ⚠️  No similar items found")
+                    logger.debug("No similar items found")
                     items_without_prices += 1
                     result_items.append(ItemWithPrice(
                         item_id=item_id,
@@ -493,9 +476,7 @@ class TBEBOQProcessor:
             }
             
         except Exception as e:
-            print(f"\n✗ Price fetching error: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Price fetching error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
     
     @staticmethod
@@ -522,19 +503,19 @@ class TBEBOQProcessor:
         project_data = self.extractor.extract_project_info(text)
         project_info = self._build_project_info(project_data, uploaded_by)
         project_id = self.repo.insert_project(project_info)
-        print(f"   ✓ Project ID: {project_id}")
+        logger.info(f"Project ID: {project_id}")
         
         # Create estimate project
         estimate_project_info = self._build_estimate_project_info(
             project_id, project_data, uploaded_by
         )
         estimate_project_id = self.repo.insert_estimate_boq_project(estimate_project_info)
-        print(f"   ✓ Estimate Project ID: {estimate_project_id}")
+        logger.info(f"Estimate Project ID: {estimate_project_id}")
         
         # Extract location
         location_info = self._build_location_info(project_data, estimate_project_id)
         location_id = self.repo.insert_location(location_info)
-        print(f"   ✓ Location ID: {location_id}")
+        logger.info(f"Location ID: {location_id}")
         
         return project_id, estimate_project_id, location_id
     
@@ -591,7 +572,7 @@ class TBEBOQProcessor:
                 location_id=location_id
             ))
         
-        print(f"      ✓ Extracted {len(items)} items")
+        logger.info(f"Extracted {len(items)} items")
         return items
     
     @staticmethod
@@ -641,32 +622,26 @@ class TBEBOQProcessor:
         )
     
     @staticmethod
-    def _print_final_summary(
+    def _log_final_summary(
         project_id, estimate_project_id, location_id, boq_id,
         total_items, items_with_prices, items_without_prices,
         total_estimated_supply, total_estimated_labour,
         total_estimated_amount, file_time, embedding_time,
         price_time, total_time
     ):
-        """Print final processing summary."""
-        print(f"\n{'='*80}")
-        print("✓ COMPLETE PROCESSING SUMMARY")
-        print(f"{'='*80}")
-        print(f"Project ID:               {project_id}")
-        print(f"Estimate Project ID:      {estimate_project_id}")
-        print(f"Location ID:              {location_id}")
-        print(f"BOQ ID:                   {boq_id}")
-        print(f"\nItems:")
-        print(f"  Total Items:            {total_items}")
-        print(f"  Items with Prices:      {items_with_prices}")
-        print(f"  Items without Prices:   {items_without_prices}")
-        print(f"\nEstimated Totals:")
-        print(f"  Supply Amount:          ₹{total_estimated_supply:,.2f}")
-        print(f"  Labour Amount:          ₹{total_estimated_labour:,.2f}")
-        print(f"  Total Amount:           ₹{total_estimated_amount:,.2f}")
-        print(f"\nTiming:")
-        print(f"  File Processing:        {file_time:.2f}s")
-        print(f"  Embedding Generation:   {embedding_time:.2f}s")
-        print(f"  Price Fetching:         {price_time:.2f}s")
-        print(f"  Total Time:             {total_time:.2f}s")
-        print(f"{'='*80}\n")
+        """Log final processing summary."""
+        logger.info("COMPLETE PROCESSING SUMMARY")
+        logger.info(f"Project ID: {project_id}")
+        logger.info(f"Estimate Project ID: {estimate_project_id}")
+        logger.info(f"Location ID: {location_id}")
+        logger.info(f"BOQ ID: {boq_id}")
+        logger.info(f"Total Items: {total_items}")
+        logger.info(f"Items with Prices: {items_with_prices}")
+        logger.info(f"Items without Prices: {items_without_prices}")
+        logger.info(f"Supply Amount: ₹{total_estimated_supply:,.2f}")
+        logger.info(f"Labour Amount: ₹{total_estimated_labour:,.2f}")
+        logger.info(f"Total Amount: ₹{total_estimated_amount:,.2f}")
+        logger.info(f"File Processing: {file_time:.2f}s")
+        logger.info(f"Embedding Generation: {embedding_time:.2f}s")
+        logger.info(f"Price Fetching: {price_time:.2f}s")
+        logger.info(f"Total Time: {total_time:.2f}s")

@@ -2,10 +2,13 @@
 Repository for store BOQ database operations.
 """
 import psycopg2
+import logging
 from psycopg2.extras import execute_values
 from typing import List, Dict, Any, Optional
 from models.store_boq import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo, BOQItem
 from core.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class BOQItemWithEmbedding:
@@ -156,10 +159,7 @@ class StoreBOQRepository:
         total_labour = sum(item.labour_amount for item in items)
         total_amount = sum(item.total_amount for item in items)
         
-        print(f"   Inserting items with:")
-        print(f"   - Total Supply Amount: ₹{total_supply:,.2f}")
-        print(f"   - Total Labour Amount: ₹{total_labour:,.2f}")
-        print(f"   - Total Amount:        ₹{total_amount:,.2f}")
+        logger.info(f"Inserting items - Supply: ₹{total_supply:,.2f}, Labour: ₹{total_labour:,.2f}, Total: ₹{total_amount:,.2f}")
             
         items_data = [
             (
@@ -210,11 +210,11 @@ class StoreBOQRepository:
                 "total_amount": sum(item.total_amount for item in items),
             }
             
-            print(f"   Calculated totals from {len(items)} items:")
-            print(f"   - Item Count:    {totals['item_count']}")
-            print(f"   - Supply Amount: ₹{totals['total_supply']:,.2f}")
-            print(f"   - Labour Amount: ₹{totals['total_labour']:,.2f}")
-            print(f"   - Total Amount:  ₹{totals['total_amount']:,.2f}")
+            logger.info(f"Calculated totals from {len(items)} items")
+            logger.info(f"Item Count: {totals['item_count']}")
+            logger.info(f"Supply: ₹{totals['total_supply']:,.2f}")
+            logger.info(f"Labour: ₹{totals['total_labour']:,.2f}")
+            logger.info(f"Total: ₹{totals['total_amount']:,.2f}")
             
             return totals
         
@@ -239,11 +239,11 @@ class StoreBOQRepository:
                 "total_amount": float(result[3]),
             }
             
-            print(f"   Retrieved totals from database:")
-            print(f"   - Item Count:    {totals['item_count']}")
-            print(f"   - Supply Amount: ₹{totals['total_supply']:,.2f}")
-            print(f"   - Labour Amount: ₹{totals['total_labour']:,.2f}")
-            print(f"   - Total Amount:  ₹{totals['total_amount']:,.2f}")
+            logger.info("Retrieved totals from database")
+            logger.info(f"Item Count: {totals['item_count']}")
+            logger.info(f"Supply: ₹{totals['total_supply']:,.2f}")
+            logger.info(f"Labour: ₹{totals['total_labour']:,.2f}")
+            logger.info(f"Total: ₹{totals['total_amount']:,.2f}")
             
             return totals
     
@@ -325,7 +325,7 @@ class StoreBOQRepository:
                 store_project_id = boq_info[1]
                 file_name = boq_info[2]
                 
-                print(f"🗑️  Deleting Store BOQ: {file_name} (ID: {boq_id})")
+                logger.info(f"Deleting Store BOQ: {file_name} (ID: {boq_id})")
                 
                 # Step 1: Delete BOQ items
                 cur.execute("""
@@ -333,7 +333,7 @@ class StoreBOQRepository:
                     WHERE boq_id = %s
                 """, (boq_id,))
                 deleted_counts['boq_items'] = cur.rowcount
-                print(f"   ✓ Deleted {cur.rowcount} BOQ items")
+                logger.info(f"Deleted {cur.rowcount} BOQ items")
                 
                 # Step 2: Delete BOQ file record
                 cur.execute("""
@@ -341,7 +341,7 @@ class StoreBOQRepository:
                     WHERE boq_id = %s
                 """, (boq_id,))
                 deleted_counts['boq_file'] = cur.rowcount
-                print(f"   ✓ Deleted BOQ file record")
+                logger.info("Deleted BOQ file record")
                 
                 # Step 3: Check if store project has other BOQ files
                 cur.execute("""
@@ -353,7 +353,7 @@ class StoreBOQRepository:
                 
                 if remaining_boqs == 0:
                     # Delete store project and related data if no other BOQs exist
-                    print(f"   No other BOQs found for store project {store_project_id}")
+                    logger.info(f"No other BOQs found for store project {store_project_id}")
                     
                     # Get project_id before deleting store project
                     cur.execute("""
@@ -371,7 +371,7 @@ class StoreBOQRepository:
                             WHERE store_project_id = %s
                         """, (store_project_id,))
                         deleted_counts['locations'] = cur.rowcount
-                        print(f"   ✓ Deleted {cur.rowcount} locations")
+                        logger.info(f"Deleted {cur.rowcount} locations")
                         
                         # Delete store project
                         cur.execute("""
@@ -379,7 +379,7 @@ class StoreBOQRepository:
                             WHERE store_project_id = %s
                         """, (store_project_id,))
                         deleted_counts['store_project'] = cur.rowcount
-                        print(f"   ✓ Deleted store project")
+                        logger.info("Deleted store project")
                         
                         # Check if project has other store/estimate projects
                         cur.execute("""
@@ -397,23 +397,23 @@ class StoreBOQRepository:
                                 WHERE project_id = %s
                             """, (project_id,))
                             deleted_counts['project'] = cur.rowcount
-                            print(f"   ✓ Deleted main project")
+                            logger.info("Deleted main project")
                         else:
-                            print(f"   ℹ️  Main project retained (has other references)")
+                            logger.info("Main project retained (has other references)")
                             deleted_counts['project'] = 0
                     else:
                         deleted_counts['locations'] = 0
                         deleted_counts['store_project'] = 0
                         deleted_counts['project'] = 0
                 else:
-                    print(f"   ℹ️  Store project retained ({remaining_boqs} other BOQ(s) exist)")
+                    logger.info(f"Store project retained ({remaining_boqs} other BOQ(s) exist)")
                     deleted_counts['locations'] = 0
                     deleted_counts['store_project'] = 0
                     deleted_counts['project'] = 0
                 
                 conn.commit()
                 
-                print(f"✓ Successfully deleted Store BOQ {boq_id}")
+                logger.info(f"Successfully deleted Store BOQ {boq_id}")
                 
                 return {
                     'success': True,
@@ -423,9 +423,7 @@ class StoreBOQRepository:
                 }
                 
         except Exception as e:
-            print(f"✗ Error deleting Store BOQ: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error deleting Store BOQ: {e}", exc_info=True)
             return {
                 'success': False,
                 'error': str(e)

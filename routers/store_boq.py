@@ -4,7 +4,9 @@ from dto.response_dto.store_boq import ProcessingStatus, ProcessingResult, Delet
 from services.store_boq import StoreBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/store-boq", tags=["Store BOQ Processing"])
 
 def process_boq_background(task_id: str, file_url: str, uploaded_by: str):
@@ -22,6 +24,7 @@ def process_boq_background(task_id: str, file_url: str, uploaded_by: str):
             "message": "Completed" if result["success"] else f"Error: {result.get('error')}",
         })
     except Exception as e:
+        logger.error(f"Background processing failed: {e}", exc_info=True)
         processing_tasks[task_id].update({
             "status": "failed",
             "result": {"success": False, "error": str(e)},
@@ -161,9 +164,7 @@ async def delete_store_boq(boq_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        print(f"Delete Error: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Delete error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete Store BOQ: {str(e)}"

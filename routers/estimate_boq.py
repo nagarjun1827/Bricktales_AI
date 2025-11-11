@@ -2,14 +2,16 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, HttpUrl
 from dto.request_dto.estimate_boq import EstimateBOQURLRequest
-from dto. response_dto.estimate_boq import TBEProcessingStatus, TBEProcessingResult, DeleteResponse
+from dto.response_dto.estimate_boq import TBEProcessingStatus, TBEProcessingResult, DeleteResponse
 from services.estimate_boq import TBEBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
 import io
 import base64
 import pandas as pd
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/estimate-boq", tags=["Estimate BOQ Processing"])
 
 def background_tbe_process(
@@ -45,7 +47,7 @@ def background_tbe_process(
                 result["excel_available"] = True
                 
             except Exception as excel_error:
-                print(f"⚠️ Excel generation failed: {excel_error}")
+                logger.warning(f"Excel generation failed: {excel_error}")
                 result["excel_available"] = False
                 result["excel_error"] = str(excel_error)
         else:
@@ -58,6 +60,7 @@ def background_tbe_process(
             "current_step": "completed" if result["success"] else "failed"
         })
     except Exception as e:
+        logger.error(f"Background processing failed: {e}", exc_info=True)
         processing_tasks[task_id].update({
             "status": "failed",
             "result": {"success": False, "error": str(e)},
@@ -167,7 +170,7 @@ def _generate_excel_data(result: dict) -> str:
     # Encode to base64
     excel_base64 = base64.b64encode(excel_bytes).decode('utf-8')
     
-    print(f"✓ Excel data generated ({len(excel_bytes)} bytes)")
+    logger.info(f"Excel data generated ({len(excel_bytes)} bytes)")
     return excel_base64
 
 
@@ -356,9 +359,7 @@ async def download_excel(task_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        print(f"Excel Download Error: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Excel download error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to download Excel: {str(e)}"
@@ -430,9 +431,7 @@ async def delete_estimate_boq(boq_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        print(f"Delete Error: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Delete error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete Estimate BOQ: {str(e)}"

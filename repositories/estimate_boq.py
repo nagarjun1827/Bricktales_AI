@@ -123,7 +123,7 @@ class TBEBOQRepository:
             logger.warning("No items to insert")
             return
         
-        logger.info(f"Preparing to insert {len(items)} items...")
+        logger.info(f"Preparing to insert {len(items)} items")
         
         items_data = [
             (
@@ -150,9 +150,9 @@ class TBEBOQRepository:
         
         try:
             with self._get_connection() as conn, conn.cursor() as cur:
-                logger.debug("Executing batch insert...")
+                logger.debug("Executing batch insert")
                 execute_values(cur, query, items_data)
-                logger.debug(f"Committing {cur.rowcount} rows...")
+                logger.debug(f"Committing {cur.rowcount} rows")
                 conn.commit()
                 logger.info(f"Successfully inserted {cur.rowcount} items")
         except Exception as e:
