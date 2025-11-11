@@ -5,7 +5,7 @@ import logging
 import pandas as pd
 import re
 from typing import List, Optional, Any
-from models.store_boq import BOQItem
+from models.store_boq_models import BOQItem
 
 logger = logging.getLogger(__name__)
 

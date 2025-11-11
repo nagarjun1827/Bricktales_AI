@@ -10,7 +10,7 @@ from typing import Dict, Any
 import pandas as pd
 import google.generativeai as genai
 
-from models.store_boq import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo
+from models.store_boq_models import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo
 from repositories.store_boq import StoreBOQRepository
 from agents.gemini_tools import (
     AnalyzeSheetStructureTool,

@@ -2,7 +2,7 @@ import logging
 import psycopg2
 from psycopg2.extras import execute_values
 from typing import List, Dict, Any, Optional
-from models.estimate_boq import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
+from models.estimate_boq_models import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
 from core.settings import settings
 
 logger = logging.getLogger(__name__)

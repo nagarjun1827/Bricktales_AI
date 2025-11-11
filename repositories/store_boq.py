@@ -5,7 +5,7 @@ import psycopg2
 import logging
 from psycopg2.extras import execute_values
 from typing import List, Dict, Any, Optional
-from models.store_boq import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo, BOQItem
+from models.store_boq_models import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo, BOQItem
 from core.settings import settings
 
 logger = logging.getLogger(__name__)

@@ -13,7 +13,7 @@ import pandas as pd
 import google.generativeai as genai
 
 from core.settings import settings
-from models.estimate_boq import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
+from models.estimate_boq_models import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
 from dto.response_dto.estimate_boq import ItemWithPrice
 from repositories.estimate_boq import TBEBOQRepository
 from repositories.price import PriceRepository
