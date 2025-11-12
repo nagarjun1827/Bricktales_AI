@@ -10,7 +10,8 @@ from typing import Dict, Any
 import pandas as pd
 import google.generativeai as genai
 
-from models.store_boq_models import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo
+from models.store_boq_models import StoreBoqFile, StoreBoqLocation, StoreBoqProject
+from models.project_models import Project
 from repositories.store_boq import StoreBOQRepository
 from agents.gemini_tools import (
     AnalyzeSheetStructureTool,
@@ -191,7 +192,7 @@ class StoreBOQProcessor:
         except:
             filename = "boq_from_url.xlsx"
             
-        file_info = BOQFileInfo(
+        file_info = StoreBoqFile(
             store_project_id=store_project_id,
             file_name=filename,
             file_path=file_url,  # Store URL instead of local path
@@ -330,14 +331,14 @@ class StoreBOQProcessor:
         }
 
     @staticmethod
-    def _build_project_info(data: dict, uploaded_by: str) -> ProjectInfo:
+    def _build_project_info(data: dict, uploaded_by: str) -> Project:
         """Build ProjectInfo from extracted data."""
         start_date = f"{data['start_year']}-01-01" if data.get('start_year') else None
         end_date = f"{data['end_year']}-12-31" if data.get('end_year') else (
             f"{data['start_year']}-12-31" if data.get('start_year') else None
         )
         
-        return ProjectInfo(
+        return Project(
             project_name=data.get("project_name", "BOQ Project"),
             project_code=data.get("project_code", f"PROJ-{datetime.now():%Y%m%d}"),
             project_type="boq",
@@ -352,10 +353,10 @@ class StoreBOQProcessor:
         project_id: int, 
         data: dict, 
         uploaded_by: str
-    ) -> StoreBOQProjectInfo:
+    ) -> StoreBoqProject:
         """Build StoreBOQProjectInfo from extracted data."""
         project_name = data.get("project_name", "BOQ Project")
-        return StoreBOQProjectInfo(
+        return StoreBoqProject(
             project_id=project_id,
             store_project_name=f"{project_name} - Store",
             store_project_code=f"STORE-{datetime.now():%Y%m%d%H%M}",
@@ -363,7 +364,7 @@ class StoreBOQProcessor:
         )
 
     @staticmethod
-    def _build_location_info(data: dict, store_project_id: int) -> LocationInfo:
+    def _build_location_info(data: dict, store_project_id: int) -> StoreBoqLocation:
         """Build LocationInfo from extracted data."""
         address_parts = [data.get("location_name", "Unknown")]
         if data.get("city"):
@@ -371,7 +372,7 @@ class StoreBOQProcessor:
         if data.get("state"):
             address_parts.append(data["state"])
             
-        return LocationInfo(
+        return StoreBoqLocation(
             store_project_id=store_project_id,
             location_name=data.get("location_name", "Unknown"),
             address=", ".join(address_parts),

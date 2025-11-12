@@ -1,39 +1,48 @@
-import psycopg2
+"""
+Repository for price fetching operations using SQLAlchemy.
+"""
+import logging
 from typing import List, Dict, Optional, Tuple
-from core.settings import settings
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from connections.postgres_connection import get_db_session
+from models.store_boq_models import StoreBoqItem, StoreBoqFile, StoreBoqProject
+from models.project_models import Project
+
+logger = logging.getLogger(__name__)
+
 
 class PriceRepository:
-    """Repository for price fetching operations"""
+    """Repository for price fetching operations using SQLAlchemy."""
     
     def __init__(self):
-        self.db_config = {
-            "host": settings.DB_HOST,
-            "database": settings.DB_NAME,
-            "user": settings.DB_USER,
-            "password": settings.DB_PASSWORD,
-            "port": settings.DB_PORT,
-        }
+        """Initialize repository."""
+        pass
     
-    def _get_connection(self):
-        return psycopg2.connect(**self.db_config)
+    def _get_session(self) -> Session:
+        """Get a database session."""
+        return get_db_session()
     
     def get_boq_line_items(self, boq_id: int) -> List[Tuple]:
-        """Get all line items for a BOQ"""
-        query = """
-            SELECT 
-                item_id,
-                item_code,
-                item_description,
-                unit_of_measurement,
-                quantity
-            FROM store_boq_items
-            WHERE boq_id = %s
-            ORDER BY item_id
-        """
-        
-        with self._get_connection() as conn, conn.cursor() as cur:
-            cur.execute(query, (boq_id,))
-            return cur.fetchall()
+        """Get all line items for a BOQ using SQLAlchemy."""
+        session = self._get_session()
+        try:
+            items = session.query(
+                StoreBoqItem.item_id,
+                StoreBoqItem.item_code,
+                StoreBoqItem.item_description,
+                StoreBoqItem.unit_of_measurement,
+                StoreBoqItem.quantity
+            ).filter(
+                StoreBoqItem.boq_id == boq_id
+            ).order_by(
+                StoreBoqItem.item_id
+            ).all()
+            
+            return items
+        finally:
+            session.close()
     
     def find_similar_items(
         self,
@@ -42,41 +51,51 @@ class PriceRepository:
         limit: int = 5,
         min_similarity: float = 0.5
     ) -> List[Dict]:
-        """Find similar items from store_boq_items using vector similarity"""
-        
-        query_str = '[' + ','.join(map(str, query_embedding)) + ']'
-        
-        query = """
-            SELECT 
-                bi.item_id,
-                bi.item_code,
-                bi.item_description,
-                bi.unit_of_measurement,
-                bi.supply_unit_rate,
-                bi.labour_unit_rate,
-                bi.total_amount,
-                p.project_name,
-                bf.file_name,
-                1 - (bi.description_embedding <=> %s::vector) as similarity
-            FROM store_boq_items bi
-            JOIN store_boq_files bf ON bi.boq_id = bf.boq_id
-            JOIN store_boq_projects sbp ON bf.store_project_id = sbp.store_project_id
-            JOIN projects p ON sbp.project_id = p.project_id
-            WHERE bi.description_embedding IS NOT NULL
-              AND bi.unit_of_measurement = %s
-              AND (1 - (bi.description_embedding <=> %s::vector)) >= %s
-              AND bi.supply_unit_rate IS NOT NULL
-              AND bi.supply_unit_rate > 0
-            ORDER BY bi.description_embedding <=> %s::vector
-            LIMIT %s
         """
+        Find similar items from store_boq_items using vector similarity.
         
-        with self._get_connection() as conn, conn.cursor() as cur:
-            cur.execute(
-                query, 
-                (query_str, unit, query_str, min_similarity, query_str, limit)
+        Note: Uses raw SQL for pgvector operations as SQLAlchemy doesn't have
+        native support for vector similarity operators.
+        """
+        session = self._get_session()
+        try:
+            query_str = '[' + ','.join(map(str, query_embedding)) + ']'
+            
+            # Use raw SQL for vector similarity search
+            result = session.execute(
+                text("""
+                    SELECT 
+                        bi.item_id,
+                        bi.item_code,
+                        bi.item_description,
+                        bi.unit_of_measurement,
+                        bi.supply_unit_rate,
+                        bi.labour_unit_rate,
+                        bi.total_amount,
+                        p.project_name,
+                        bf.file_name,
+                        1 - (bi.description_embedding <=> :query_embedding::vector) as similarity
+                    FROM store_boq_items bi
+                    JOIN store_boq_files bf ON bi.boq_id = bf.boq_id
+                    JOIN store_boq_projects sbp ON bf.store_project_id = sbp.store_project_id
+                    JOIN projects p ON sbp.project_id = p.project_id
+                    WHERE bi.description_embedding IS NOT NULL
+                      AND bi.unit_of_measurement = :unit
+                      AND (1 - (bi.description_embedding <=> :query_embedding::vector)) >= :min_similarity
+                      AND bi.supply_unit_rate IS NOT NULL
+                      AND bi.supply_unit_rate > 0
+                    ORDER BY bi.description_embedding <=> :query_embedding::vector
+                    LIMIT :limit
+                """),
+                {
+                    'query_embedding': query_str,
+                    'unit': unit,
+                    'min_similarity': min_similarity,
+                    'limit': limit
+                }
             )
-            rows = cur.fetchall()
+            
+            rows = result.fetchall()
             
             results = []
             for row in rows:
@@ -94,30 +113,35 @@ class PriceRepository:
                 })
             
             return results
+            
+        finally:
+            session.close()
     
     def get_boq_info(self, boq_id: int) -> Optional[Dict]:
-        """Get BOQ file information"""
-        query = """
-            SELECT 
-                bf.boq_id,
-                bf.file_name,
-                p.project_name,
-                p.project_code
-            FROM store_boq_files bf
-            JOIN store_boq_projects sbp ON bf.store_project_id = sbp.store_project_id
-            JOIN projects p ON sbp.project_id = p.project_id
-            WHERE bf.boq_id = %s
-        """
-        
-        with self._get_connection() as conn, conn.cursor() as cur:
-            cur.execute(query, (boq_id,))
-            row = cur.fetchone()
+        """Get BOQ file information using SQLAlchemy."""
+        session = self._get_session()
+        try:
+            result = session.query(
+                StoreBoqFile.boq_id,
+                StoreBoqFile.file_name,
+                Project.project_name,
+                Project.project_code
+            ).join(
+                StoreBoqProject, 
+                StoreBoqFile.store_project_id == StoreBoqProject.store_project_id
+            ).join(
+                Project, StoreBoqProject.project_id == Project.project_id
+            ).filter(
+                StoreBoqFile.boq_id == boq_id
+            ).first()
             
-            if row:
+            if result:
                 return {
-                    'boq_id': row[0],
-                    'file_name': row[1],
-                    'project_name': row[2],
-                    'project_code': row[3]
+                    'boq_id': result.boq_id,
+                    'file_name': result.file_name,
+                    'project_name': result.project_name,
+                    'project_code': result.project_code
                 }
             return None
+        finally:
+            session.close()

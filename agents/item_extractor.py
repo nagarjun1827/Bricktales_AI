@@ -5,9 +5,34 @@ import logging
 import pandas as pd
 import re
 from typing import List, Optional, Any
-from models.store_boq_models import BOQItem
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+# Define BOQItem as a Pydantic model (used for data transfer)
+class BOQItem(BaseModel):
+    boq_id: int
+    item_code: Optional[str] = None
+    item_description: str
+    unit_of_measurement: str
+    quantity: float
+    supply_unit_rate: float = 0.0
+    labour_unit_rate: float = 0.0
+    location_id: Optional[int] = None
+    created_by: str = "system"
+    
+    @property
+    def supply_amount(self) -> float:
+        return self.quantity * self.supply_unit_rate
+    
+    @property
+    def labour_amount(self) -> float:
+        return self.quantity * self.labour_unit_rate
+    
+    @property
+    def total_amount(self) -> float:
+        return self.supply_amount + self.labour_amount
 
 
 class ItemExtractorAgent:
