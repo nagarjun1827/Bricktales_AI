@@ -32,38 +32,73 @@ class GeminiExtractor:
     def extract_project_info(self, text: str) -> Dict:
         """Extract project information."""
         prompt = f"""Extract project info from: {text}
-Return JSON: {{"project_name": str, "project_code": str, "year": str, "location": str, "client_name": str|null}}"""
+            Return JSON: {{"project_name": str, "project_code": str, "year": str, "location": str, "client_name": str|null}}
+
+            IMPORTANT: Return a single JSON object, not an array."""
 
         try:
             response = self.model.generate_content(prompt)
-            return json.loads(self._clean_json(response.text))
-        except:
+            cleaned = self._clean_json(response.text)
+            result = json.loads(cleaned)
+            
+            # Handle case where Gemini returns an array instead of object
+            if isinstance(result, list):
+                if len(result) > 0 and isinstance(result[0], dict):
+                    return result[0]  # Return first object from array
+                return {}  # Empty list or invalid format
+            
+            return result if isinstance(result, dict) else {}
+        except Exception as e:
+            logger.warning(f"Failed to extract project info: {e}")
             return {}
     
+
     def identify_columns(self, columns: List[str]) -> Dict:
         """Identify column mappings."""
         cols = ', '.join([f'"{c}"' for c in columns])
         prompt = f"""Map columns to: item_code, description, quantity, unit
-Columns: {cols}
-Return JSON mapping."""
+            Columns: {cols}
+            Return JSON mapping.
+
+            IMPORTANT: Return a single JSON object with keys, not an array."""
 
         try:
             response = self.model.generate_content(prompt)
-            return json.loads(self._clean_json(response.text))
-        except:
+            cleaned = self._clean_json(response.text)
+            result = json.loads(cleaned)
+            
+            # Handle case where Gemini returns an array instead of object
+            if isinstance(result, list):
+                if len(result) > 0 and isinstance(result[0], dict):
+                    return result[0]  # Return first object from array
+                return {}  # Empty list or invalid format
+            
+            return result if isinstance(result, dict) else {}
+        except Exception as e:
+            logger.warning(f"Failed to identify columns: {e}")
             return {}
     
     @staticmethod
     def _clean_json(text: str) -> str:
-        """Clean JSON response."""
+        """Clean JSON response from Gemini."""
         text = text.strip()
+        
+        # Remove markdown code blocks
         if text.startswith('```json'):
             text = text[7:]
-        if text.startswith('```'):
+        elif text.startswith('```'):
             text = text[3:]
+        
         if text.endswith('```'):
             text = text[:-3]
-        return text.strip()
+        
+        text = text.strip()
+        
+        # Log for debugging if it looks unusual
+        if text.startswith('[') and not text.startswith('{'):
+            logger.debug(f"Gemini returned array instead of object: {text[:100]}...")
+        
+        return text
 
 
 class TBEBOQProcessor:

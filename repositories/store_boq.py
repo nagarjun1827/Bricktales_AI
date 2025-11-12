@@ -2,12 +2,14 @@
 Repository for store BOQ database operations.
 """
 import psycopg2
+from datetime import datetime
 import logging
 from psycopg2.extras import execute_values
 from typing import List, Dict, Any, Optional
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from models.store_boq_models import StoreBoqProject, StoreBoqLocation, StoreBoqFile, StoreBoqItem
+from models.project_models import Project
 from core.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ class StoreBOQRepository:
     def insert_project(self, project_info) -> int:
         """Insert project."""
         with self._get_session() as session:
-            project = StoreBoqProject(
+            project = Project(
                 project_name=project_info.project_name,
                 project_code=project_info.project_code,
                 project_type=project_info.project_type,
@@ -160,7 +162,11 @@ class StoreBOQRepository:
             return items
     
     def update_embeddings_batch(self, item_ids: List[int], embeddings: List[List[float]]) -> int:
-        """Update embeddings for a batch of items."""
+        """
+        Update embeddings for a batch of items using SQLAlchemy ORM.
+        
+        This avoids SQL syntax errors with vector type casting and parameter binding.
+        """
         if not item_ids or not embeddings:
             return 0
         
@@ -168,25 +174,25 @@ class StoreBOQRepository:
         with self._get_session() as session:
             for item_id, embedding in zip(item_ids, embeddings):
                 try:
-                    # Convert embedding to string format
-                    embedding_str = '[' + ','.join(map(str, embedding)) + ']'
+                    # Get the item using ORM
+                    item = session.query(StoreBoqItem).filter(
+                        StoreBoqItem.item_id == item_id
+                    ).first()
                     
-                    # Execute update using raw SQL with text()
-                    session.execute(
-                        text("""
-                            UPDATE store_boq_items
-                            SET description_embedding = :embedding::vector,
-                                embedding_generated_at = CURRENT_TIMESTAMP,
-                                updated_at = CURRENT_TIMESTAMP
-                            WHERE item_id = :item_id
-                        """),
-                        {"embedding": embedding_str, "item_id": item_id}
-                    )
-                    updated += 1
+                    if item:
+                        # Update using ORM - SQLAlchemy handles vector type conversion
+                        item.description_embedding = embedding
+                        item.embedding_generated_at = datetime.now()
+                        item.updated_at = datetime.now()
+                        updated += 1
+                        
                 except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
                     logger.warning(f"Failed to update item {item_id}: {e}")
                     continue
             
+            # Commit all updates at once
             session.commit()
         
         return updated
