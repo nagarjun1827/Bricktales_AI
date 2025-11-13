@@ -1,10 +1,38 @@
 """
 Item extraction agent for BOQ processing.
 """
+import logging
 import pandas as pd
 import re
-from typing import List, Optional, Any
-from models.domain import BOQItem
+from typing import List, Optional, Any, Dict
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+
+# Define BOQItem as a Pydantic model (used for data transfer)
+class BOQItem(BaseModel):
+    boq_id: int
+    item_code: Optional[str] = None
+    item_description: str
+    unit_of_measurement: str
+    quantity: float
+    supply_unit_rate: float = 0.0
+    labour_unit_rate: float = 0.0
+    location_id: Optional[int] = None
+    created_by: str = "system"
+    
+    @property
+    def supply_amount(self) -> float:
+        return self.quantity * self.supply_unit_rate
+    
+    @property
+    def labour_amount(self) -> float:
+        return self.quantity * self.labour_unit_rate
+    
+    @property
+    def total_amount(self) -> float:
+        return self.supply_amount + self.labour_amount
 
 
 class ItemExtractorAgent:
@@ -18,70 +46,200 @@ class ItemExtractorAgent:
         location_id: int
     ) -> List[BOQItem]:
         """Extract BOQ items from dataframe."""
-        print(f"      Extracting items with intelligent parsing...")
         
         data_start = structure['data_start_row']
         column_structure = structure['column_structure']
         
         col_map = {col['type']: col['position'] for col in column_structure}
-        print(f"      Column mapping: {col_map}")
+        
+        # FALLBACK: If rate columns not detected, try pattern matching
+        if 'supply_rate' not in col_map or col_map['supply_rate'] is None:
+            logger.warning("supply_rate column not detected by Gemini, trying fallback pattern matching...")
+            supply_rate_col = self._find_rate_column(df, 'supply')
+            if supply_rate_col is not None:
+                col_map['supply_rate'] = supply_rate_col
+            else:
+                logger.warning("✗ Could not find supply_rate column")
+        
+        if 'labour_rate' not in col_map or col_map['labour_rate'] is None:
+            logger.warning("labour_rate column not detected by Gemini, trying fallback pattern matching...")
+            labour_rate_col = self._find_rate_column(df, 'labour')
+            if labour_rate_col is not None:
+                col_map['labour_rate'] = labour_rate_col
+            else:
+                logger.warning("✗ Could not find labour_rate column")
         
         items = []
         data_df = df.iloc[data_start:].reset_index(drop=True)
         
-        for _, row in data_df.iterrows():
+        # Track statistics
+        items_with_supply_rate = 0
+        items_with_labour_rate = 0
+        
+        for idx, row in data_df.iterrows():
             if row.isna().all():
                 continue
             
-            # Extract values
+            # Extract values with proper None handling
             item_code = self._get_value(row, col_map.get('item_code'))
             description = self._get_value(row, col_map.get('description'), default='')
             unit = self._get_value(row, col_map.get('unit'), default='Each')
             quantity = self._extract_numeric(self._get_value(row, col_map.get('quantity')))
-            rate = self._extract_numeric(self._get_value(row, col_map.get('rate')))
-            amount = self._extract_numeric(self._get_value(row, col_map.get('amount')))
+            
+            # Extract rates - check if column exists first
+            supply_rate = 0.0
+            if 'supply_rate' in col_map and col_map['supply_rate'] is not None:
+                supply_rate = self._extract_numeric(self._get_value(row, col_map['supply_rate']))
+                if supply_rate > 0:
+                    items_with_supply_rate += 1
+            
+            labour_rate = 0.0
+            if 'labour_rate' in col_map and col_map['labour_rate'] is not None:
+                labour_rate = self._extract_numeric(self._get_value(row, col_map['labour_rate']))
+                if labour_rate > 0:
+                    items_with_labour_rate += 1
+            
+            # Extract amounts
+            supply_amount = 0.0
+            if 'supply_amount' in col_map and col_map['supply_amount'] is not None:
+                supply_amount = self._extract_numeric(self._get_value(row, col_map['supply_amount']))
+            
+            labour_amount = 0.0
+            if 'labour_amount' in col_map and col_map['labour_amount'] is not None:
+                labour_amount = self._extract_numeric(self._get_value(row, col_map['labour_amount']))
+            
+            total_amount = 0.0
+            if 'total_amount' in col_map and col_map['total_amount'] is not None:
+                total_amount = self._extract_numeric(self._get_value(row, col_map['total_amount']))
             
             # Skip invalid rows
-            if not description or (quantity == 0 and rate == 0 and amount == 0):
+            if not description:
                 continue
             if len(str(description).strip()) < 5:
                 continue
+            if quantity == 0 and supply_rate == 0 and labour_rate == 0 and supply_amount == 0 and labour_amount == 0 and total_amount == 0:
+                continue
             
-            # Derive quantity if missing but have rate and amount
-            if quantity == 0 and rate > 0 and amount > 0:
-                quantity = round(amount / rate, 4)
+            # Derive missing values intelligently
             
-            # Derive rate if missing but have quantity and amount
-            if rate == 0 and quantity > 0 and amount > 0:
-                rate = round(amount / quantity, 2)
+            # 1. Derive quantity if missing
+            if quantity == 0:
+                if supply_rate > 0 and supply_amount > 0:
+                    quantity = round(supply_amount / supply_rate, 4)
+                elif labour_rate > 0 and labour_amount > 0:
+                    quantity = round(labour_amount / labour_rate, 4)
+                elif (supply_rate + labour_rate) > 0 and total_amount > 0:
+                    quantity = round(total_amount / (supply_rate + labour_rate), 4)
             
-            # Create item (amounts will be auto-calculated in __post_init__)
+            # 2. Derive supply_rate if missing but have supply_amount and quantity
+            if supply_rate == 0 and supply_amount > 0 and quantity > 0:
+                supply_rate = round(supply_amount / quantity, 2)
+                items_with_supply_rate += 1
+            
+            # 3. Derive labour_rate if missing but have labour_amount and quantity
+            if labour_rate == 0 and labour_amount > 0 and quantity > 0:
+                labour_rate = round(labour_amount / quantity, 2)
+                items_with_labour_rate += 1
+            
+            # 4. If we have total_amount but no supply/labour breakdown, try to derive
+            if total_amount > 0 and quantity > 0:
+                if supply_rate == 0 and labour_rate == 0:
+                    # Assume all is supply if no labour info
+                    if labour_amount == 0:
+                        supply_rate = round(total_amount / quantity, 2)
+                        items_with_supply_rate += 1
+                    # If labour_amount exists, derive labour_rate
+                    elif labour_amount > 0:
+                        labour_rate = round(labour_amount / quantity, 2)
+                        remaining = total_amount - labour_amount
+                        if remaining > 0:
+                            supply_rate = round(remaining / quantity, 2)
+                            items_with_supply_rate += 1
+                            items_with_labour_rate += 1
+            
+            # Final validation - skip if no meaningful data
+            if quantity == 0:
+                continue
+            
+            # Debug logging for first few items
+            if idx < 3:
+                logger.debug(f"Item {idx}: desc='{description[:40]}...', qty={quantity}, supply_rate={supply_rate}, labour_rate={labour_rate}")
+            
+            # Create item
             item = BOQItem(
                 boq_id=boq_id,
                 item_code=str(item_code) if item_code is not None else None,
                 item_description=str(description).strip(),
                 unit_of_measurement=self._normalize_unit(unit),
                 quantity=quantity,
-                supply_unit_rate=rate,
-                labour_unit_rate=0.0,  # Can be extracted if column exists
+                supply_unit_rate=supply_rate,
+                labour_unit_rate=labour_rate,
                 location_id=location_id,
                 created_by='system'
             )
             
             items.append(item)
         
-        print(f"      Extracted {len(items)} valid items")
+        logger.info(f"Extracted {len(items)} valid items")
         
-        # Print summary of amounts
+        # Calculate summary
         total_supply = sum(item.supply_amount for item in items)
         total_labour = sum(item.labour_amount for item in items)
         total_amount = sum(item.total_amount for item in items)
         
-        print(f"      Supply Total: ₹{total_supply:,.2f}")
-        print(f"      Labour Total: ₹{total_labour:,.2f}")
-        print(f"      Grand Total:  ₹{total_amount:,.2f}")
+        logger.info(f"Supply Total: ₹{total_supply:,.2f}")
+        logger.info(f"Labour Total: ₹{total_labour:,.2f}")
+        logger.info(f"Grand Total: ₹{total_amount:,.2f}")
         
         return items
+    
+    def _find_rate_column(self, df: pd.DataFrame, rate_type: str) -> Optional[int]:
+        """
+        Fallback method to find rate columns using pattern matching.
+        
+        Args:
+            df: DataFrame to search
+            rate_type: 'supply' or 'labour'
+        
+        Returns:
+            Column position or None
+        """
+        if rate_type == 'supply':
+            patterns = [
+                r'supply.*rate', r'material.*rate', r'supply.*unit',
+                r'^rate$', r'unit.*rate', r'rate.*unit', r'mat.*rate'
+            ]
+        else:  # labour
+            patterns = [
+                r'labour.*rate', r'labor.*rate', r'labour.*unit',
+                r'labor.*unit', r'lab.*rate'
+            ]
+        
+        # Search in column headers
+        for idx, col in enumerate(df.columns):
+            col_str = str(col).lower().strip()
+            for pattern in patterns:
+                if re.search(pattern, col_str, re.IGNORECASE):
+                    # Additional check: verify column has numeric data
+                    if self._is_numeric_column(df.iloc[:, idx]):
+                        return idx
+        
+        return None
+    
+    def _is_numeric_column(self, series: pd.Series) -> bool:
+        """Check if a column contains mostly numeric data."""
+        # Take first 20 non-null values
+        sample = series.dropna().head(20)
+        if len(sample) == 0:
+            return False
+        
+        numeric_count = 0
+        for val in sample:
+            if self._extract_numeric(val) > 0:
+                numeric_count += 1
+        
+        # Consider numeric if >50% of samples are numeric
+        return numeric_count / len(sample) > 0.5
     
     @staticmethod
     def _get_value(row: pd.Series, position: Optional[int], default=None) -> Any:

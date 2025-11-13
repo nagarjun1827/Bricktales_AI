@@ -1,3 +1,3 @@
-from .store_boq_routes import router
+from .store_boq import router
 
 __all__ = ["router"]

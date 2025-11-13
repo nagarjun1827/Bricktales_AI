@@ -109,7 +109,7 @@ pip install -e .
 
 ### Performance Comparison
 ```
-📊 Installation Speed Comparison:
+ Installation Speed Comparison:
    uv:  ~10-20 seconds  ⚡⚡⚡
    pip: ~2-5 minutes    🐌
    
@@ -391,7 +391,7 @@ bricktales-ai-boq/
 └── README.md
 ```
 
-## 🔍 Features Deep Dive
+##  Features Deep Dive
 
 ### Multi-Agent Architecture
 The system uses specialized AI agents:

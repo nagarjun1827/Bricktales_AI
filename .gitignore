@@ -12,3 +12,5 @@ wheels/
 uploads
 uv.lock
 .vscode
+env
+

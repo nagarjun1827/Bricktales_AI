@@ -1,24 +1,18 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, HttpUrl
-from models.tbe_dto import TBEProcessingStatus, TBEProcessingResult, DeleteResponse
-from services.tbe_boq_processor import TBEBOQProcessor
+from dto.request_dto.estimate_boq import EstimateBOQURLRequest
+from dto.response_dto.estimate_boq import TBEProcessingStatus, TBEProcessingResult, DeleteResponse
+from services.estimate_boq import TBEBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
 import io
 import base64
 import pandas as pd
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/estimate-boq", tags=["Estimate BOQ Processing"])
-
-
-class EstimateBOQURLRequest(BaseModel):
-    """Request model for Estimate BOQ URL upload"""
-    file_url: HttpUrl
-    uploaded_by: str = "system"
-    min_similarity: float = 0.5
-    export_excel: bool = True
-
 
 def background_tbe_process(
     task_id: str, 
@@ -53,7 +47,7 @@ def background_tbe_process(
                 result["excel_available"] = True
                 
             except Exception as excel_error:
-                print(f"⚠️ Excel generation failed: {excel_error}")
+                logger.warning(f"Excel generation failed: {excel_error}")
                 result["excel_available"] = False
                 result["excel_error"] = str(excel_error)
         else:
@@ -66,6 +60,7 @@ def background_tbe_process(
             "current_step": "completed" if result["success"] else "failed"
         })
     except Exception as e:
+        logger.error(f"Background processing failed: {e}", exc_info=True)
         processing_tasks[task_id].update({
             "status": "failed",
             "result": {"success": False, "error": str(e)},
@@ -75,19 +70,19 @@ def background_tbe_process(
 
 
 def _generate_excel_data(result: dict) -> str:
-    """Generate Excel data from processing result as base64 string"""
+    """Generate Excel data from processing result as base64 string with Summary sheet"""
     items = result.get("items", [])
     
     if not items:
         raise ValueError("No items found in result")
     
-    # Prepare data for DataFrame
-    data = []
+    # Prepare data for Items DataFrame
+    items_data = []
     for item in items:
         # Convert Pydantic model to dict
         item_data = item.model_dump() if hasattr(item, 'model_dump') else item
         
-        data.append({
+        items_data.append({
             'Item ID': item_data.get('item_id', ''),
             'Item Code': item_data.get('item_code', ''),
             'Description': item_data.get('description', ''),
@@ -102,21 +97,152 @@ def _generate_excel_data(result: dict) -> str:
             'Similarity Score': item_data.get('similarity_score')
         })
     
-    # Create DataFrame
-    df = pd.DataFrame(data)
+    # Create Items DataFrame
+    items_df = pd.DataFrame(items_data)
     
-    # Create Excel file in memory
+    # Prepare Summary data
+    summary_data = {
+        'Metric': [
+            'Total Items',
+            'Items with Prices',
+            'Items without Prices',
+            '',
+            'Total Estimated Supply Amount',
+            'Total Estimated Labour Amount',
+            'Total Estimated Amount',
+            '',
+            'File Processing Time (seconds)',
+            'Embedding Generation Time (seconds)',
+            'Price Fetching Time (seconds)',
+            'Total Processing Time (seconds)',
+        ],
+        'Value': [
+            result.get('total_items', 0),
+            result.get('items_with_prices', 0),
+            result.get('items_without_prices', 0),
+            '',
+            f"₹{result.get('total_estimated_supply', 0):,.2f}" if result.get('total_estimated_supply') else '₹0.00',
+            f"₹{result.get('total_estimated_labour', 0):,.2f}" if result.get('total_estimated_labour') else '₹0.00',
+            f"₹{result.get('total_estimated_amount', 0):,.2f}" if result.get('total_estimated_amount') else '₹0.00',
+            '',
+            f"{result.get('file_processing_time', 0):.2f}" if result.get('file_processing_time') else '0.00',
+            f"{result.get('embedding_generation_time', 0):.2f}" if result.get('embedding_generation_time') else '0.00',
+            f"{result.get('price_fetching_time', 0):.2f}" if result.get('price_fetching_time') else '0.00',
+            f"{result.get('total_processing_time', 0):.2f}" if result.get('total_processing_time') else '0.00',
+        ]
+    }
+    
+    summary_df = pd.DataFrame(summary_data)
+    
+    # Create Excel file in memory with multiple sheets
     output = io.BytesIO()
     
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Estimate BOQ', index=False)
+        # Write Summary sheet first
+        summary_df.to_excel(writer, sheet_name='Summary', index=False)
         
-        # Get workbook and worksheet objects
+        # Write Items sheet
+        items_df.to_excel(writer, sheet_name='Estimate BOQ', index=False)
+        
+        # Get workbook and worksheets
         workbook = writer.book
-        worksheet = writer.sheets['Estimate BOQ']
+        summary_sheet = writer.sheets['Summary']
+        items_sheet = writer.sheets['Estimate BOQ']
         
-        # Define formats
-        header_format = workbook.add_format({
+        # === SUMMARY SHEET FORMATTING ===
+        
+        # Define formats for summary
+        summary_header_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#2E75B6',
+            'font_color': 'white',
+            'border': 1,
+            'align': 'center',
+            'valign': 'vcenter'
+        })
+        
+        summary_section_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#D9E1F2',
+            'border': 1,
+            'align': 'left'
+        })
+        
+        summary_currency_format = workbook.add_format({
+            'align': 'right',
+            'border': 1,
+            'font_size': 11
+        })
+        
+        summary_number_format = workbook.add_format({
+            'align': 'right',
+            'border': 1
+        })
+        
+        # Set column widths for summary
+        summary_sheet.set_column('A:A', 40)  # Metric column
+        summary_sheet.set_column('B:B', 30)  # Value column
+        
+        # Format header row
+        for col_num, value in enumerate(summary_df.columns.values):
+            summary_sheet.write(0, col_num, value, summary_header_format)
+        
+        # Format rows with different styles
+        for row_num in range(len(summary_df)):
+            actual_row = row_num + 1  # +1 because header is row 0
+            metric = summary_df.iloc[row_num]['Metric']
+            value = summary_df.iloc[row_num]['Value']
+            
+            # Section headers (rows with specific metrics)
+            if metric in ['Total Items', 'Total Estimated Supply Amount', 'File Processing Time (seconds)']:
+                summary_sheet.write(actual_row, 0, metric, summary_section_format)
+                summary_sheet.write(actual_row, 1, value, summary_number_format if not isinstance(value, str) or not value.startswith('₹') else summary_currency_format)
+            # Empty rows
+            elif metric == '':
+                summary_sheet.write(actual_row, 0, '', workbook.add_format({'border': 0}))
+                summary_sheet.write(actual_row, 1, '', workbook.add_format({'border': 0}))
+            # Regular data rows
+            else:
+                summary_sheet.write(actual_row, 0, metric, workbook.add_format({'border': 1}))
+                summary_sheet.write(actual_row, 1, value, summary_number_format if not isinstance(value, str) or not value.startswith('₹') else summary_currency_format)
+        
+        # Add title at the top
+        summary_sheet.merge_range('A1:B1', 'BOQ ESTIMATION SUMMARY', workbook.add_format({
+            'bold': True,
+            'font_size': 14,
+            'bg_color': '#2E75B6',
+            'font_color': 'white',
+            'align': 'center',
+            'valign': 'vcenter',
+            'border': 1
+        }))
+        
+        # Shift data down by 2 rows to make room for title
+        summary_df.to_excel(writer, sheet_name='Summary', index=False, startrow=2)
+        
+        # Re-apply formatting after writing data with offset
+        for col_num, value in enumerate(summary_df.columns.values):
+            summary_sheet.write(2, col_num, value, summary_header_format)
+        
+        for row_num in range(len(summary_df)):
+            actual_row = row_num + 3  # +3 because title + header
+            metric = summary_df.iloc[row_num]['Metric']
+            value = summary_df.iloc[row_num]['Value']
+            
+            if metric in ['Total Items', 'Total Estimated Supply Amount', 'File Processing Time (seconds)']:
+                summary_sheet.write(actual_row, 0, metric, summary_section_format)
+                summary_sheet.write(actual_row, 1, value, summary_number_format if not isinstance(value, str) or not value.startswith('₹') else summary_currency_format)
+            elif metric == '':
+                summary_sheet.write(actual_row, 0, '', workbook.add_format({'border': 0}))
+                summary_sheet.write(actual_row, 1, '', workbook.add_format({'border': 0}))
+            else:
+                summary_sheet.write(actual_row, 0, metric, workbook.add_format({'border': 1}))
+                summary_sheet.write(actual_row, 1, value, summary_number_format if not isinstance(value, str) or not value.startswith('₹') else summary_currency_format)
+        
+        # === ITEMS SHEET FORMATTING ===
+        
+        # Define formats for items
+        items_header_format = workbook.add_format({
             'bold': True,
             'bg_color': '#4472C4',
             'font_color': 'white',
@@ -147,26 +273,26 @@ def _generate_excel_data(result: dict) -> str:
             'border': 1
         })
         
-        # Set column widths and formats
-        worksheet.set_column('A:A', 10, text_format)  # Item ID
-        worksheet.set_column('B:B', 12, text_format)  # Item Code
-        worksheet.set_column('C:C', 50, text_format)  # Description
-        worksheet.set_column('D:D', 10, text_format)  # Unit
-        worksheet.set_column('E:E', 12, number_format)  # Quantity
-        worksheet.set_column('F:F', 20, currency_format)  # Estimated Supply Rate
-        worksheet.set_column('G:G', 20, currency_format)  # Estimated Labour Rate
-        worksheet.set_column('H:H', 20, currency_format)  # Estimated Supply Total
-        worksheet.set_column('I:I', 20, currency_format)  # Estimated Labour Total
-        worksheet.set_column('J:J', 20, currency_format)  # Estimated Total
-        worksheet.set_column('K:K', 60, text_format)  # Pricing Source
-        worksheet.set_column('L:L', 15, percent_format)  # Similarity Score
+        # Set column widths and formats for items
+        items_sheet.set_column('A:A', 10, text_format)  # Item ID
+        items_sheet.set_column('B:B', 12, text_format)  # Item Code
+        items_sheet.set_column('C:C', 50, text_format)  # Description
+        items_sheet.set_column('D:D', 10, text_format)  # Unit
+        items_sheet.set_column('E:E', 12, number_format)  # Quantity
+        items_sheet.set_column('F:F', 20, currency_format)  # Estimated Supply Rate
+        items_sheet.set_column('G:G', 20, currency_format)  # Estimated Labour Rate
+        items_sheet.set_column('H:H', 20, currency_format)  # Estimated Supply Total
+        items_sheet.set_column('I:I', 20, currency_format)  # Estimated Labour Total
+        items_sheet.set_column('J:J', 20, currency_format)  # Estimated Total
+        items_sheet.set_column('K:K', 60, text_format)  # Pricing Source
+        items_sheet.set_column('L:L', 15, percent_format)  # Similarity Score
         
-        # Format header row
-        for col_num, value in enumerate(df.columns.values):
-            worksheet.write(0, col_num, value, header_format)
+        # Format header row for items
+        for col_num, value in enumerate(items_df.columns.values):
+            items_sheet.write(0, col_num, value, items_header_format)
         
         # Set row height for header
-        worksheet.set_row(0, 20)
+        items_sheet.set_row(0, 20)
     
     # Get Excel data as bytes
     excel_bytes = output.getvalue()
@@ -175,7 +301,7 @@ def _generate_excel_data(result: dict) -> str:
     # Encode to base64
     excel_base64 = base64.b64encode(excel_bytes).decode('utf-8')
     
-    print(f"✓ Excel data generated ({len(excel_bytes)} bytes)")
+    logger.info(f"Excel data generated with Summary sheet ({len(excel_bytes)} bytes)")
     return excel_base64
 
 
@@ -192,13 +318,13 @@ async def upload_estimate_boq_url(
     2. **File Processing**: Extract items, project info, and location
     3. **Embedding Generation**: Generate semantic embeddings for all items
     4. **Price Fetching**: Find best matching item (top 1) and use its rates directly
-    5. **Excel Export** (Optional): Generate Excel file with results if export_excel=true
+    5. **Excel Export** (Optional): Generate Excel file with results and summary if export_excel=true
     6. **Return Results**: Complete BOQ with estimated prices and pricing source
     
     **Request Body:**
 ```json
         {
-            "file_url": "https://example.com/estimate_boq.xlsx",
+            "file_url": "http://35.200.254.142:3000/uploads/1/d0746c9a18f05c96ce5ebee135afd362.xlsx",
             "uploaded_by": "user",
             "min_similarity": 0.5,
             "export_excel": true
@@ -211,12 +337,9 @@ async def upload_estimate_boq_url(
     - **min_similarity**: Minimum similarity score (0.0-1.0, default: 0.5)
     - **export_excel**: Generate Excel file after processing (default: false)
     
-    **Excel Export Columns:**
-    - Item ID, Item Code, Description, Unit, Quantity
-    - Estimated Supply Rate, Estimated Labour Rate
-    - Estimated Supply Total, Estimated Labour Total, Estimated Total
-    - **Pricing Source** (explains where the price came from)
-    - **Similarity Score** (how similar the match was)
+    **Excel Export:**
+    - **Summary Sheet**: Overall statistics, totals, and processing time
+    - **Estimate BOQ Sheet**: Detailed items with pricing
     
     **Returns:**
     - Task ID for tracking progress
@@ -245,7 +368,7 @@ async def upload_estimate_boq_url(
 
     message = "Estimate BOQ processing started with automatic price fetching from URL (best match only)."
     if request.export_excel:
-        message += " Excel export will be generated after processing."
+        message += " Excel export with summary will be generated after processing."
 
     return TBEProcessingStatus(
         task_id=task_id,
@@ -265,7 +388,7 @@ async def get_tbe_status(task_id: str):
     - **processing_file**: Extracting BOQ items from URL
     - **generating_embeddings**: Creating semantic embeddings
     - **fetching_prices**: Finding best matching item and prices
-    - **exporting_excel**: Generating Excel file (if requested)
+    - **exporting_excel**: Generating Excel file with summary (if requested)
     - **completed**: Successfully processed with prices
     - **failed**: Processing failed (check result for error details)
     """
@@ -303,17 +426,28 @@ async def get_tbe_result(task_id: str):
     return TBEProcessingResult(**task["result"])
 
 
-@router.get("/download-excel/{task_id}", summary="Download Excel file")
+@router.get("/download-excel/{task_id}", summary="Download Excel file with Summary")
 async def download_excel(task_id: str):
     """
     Download the generated Excel file for a completed task.
     
-    **Excel Columns:**
-    - Item ID, Item Code, Description, Unit, Quantity
-    - Estimated Supply Rate, Estimated Labour Rate
-    - Estimated Supply Total, Estimated Labour Total, Estimated Total
-    - **Pricing Source** (detailed explanation of where the price came from)
-    - **Similarity Score** (how similar the matched item was)
+    **Excel Contains:**
+    
+    **Sheet 1: Summary**
+    - Total Items
+    - Items with/without Prices
+    - Total Estimated Supply Amount
+    - Total Estimated Labour Amount
+    - Total Estimated Amount
+    - Processing Time Breakdown
+    
+    **Sheet 2: Estimate BOQ**
+    - Item ID, Code, Description, Unit, Quantity
+    - Estimated Supply Rate & Total
+    - Estimated Labour Rate & Total
+    - Estimated Total (supply + labour)
+    - Pricing Source (detailed explanation)
+    - Similarity Score (match quality)
     
     **Note:** Excel file is only available if export_excel=true was set during upload.
     
@@ -353,7 +487,7 @@ async def download_excel(task_id: str):
         
         # Return Excel as streaming response
         boq_id = result.get('boq_id', 'unknown')
-        filename = f"estimate_boq_{boq_id}.xlsx"
+        filename = f"estimate_boq_{boq_id}_with_summary.xlsx"
         
         return StreamingResponse(
             io.BytesIO(excel_bytes),
@@ -364,9 +498,7 @@ async def download_excel(task_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        print(f"Excel Download Error: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Excel download error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, 
             detail=f"Failed to download Excel: {str(e)}"
@@ -393,26 +525,10 @@ async def delete_estimate_boq(boq_id: int):
     - Count of deleted records from each table
     - Confirmation message
     
-    **Example Response:**
-```json
-    {
-        "success": true,
-        "boq_id": 456,
-        "deleted_counts": {
-            "boq_items": 200,
-            "boq_file": 1,
-            "locations": 1,
-            "estimate_project": 1,
-            "project": 1
-        },
-        "message": "Estimate BOQ 456 and related data deleted successfully"
-    }
-```
-    
     **Note:** This operation cannot be undone. Make sure you want to permanently delete this data.
     """
     try:
-        from services.tbe_boq_processor import TBEBOQProcessor
+        from services.estimate_boq import TBEBOQProcessor
         
         processor = TBEBOQProcessor()
         
@@ -438,9 +554,7 @@ async def delete_estimate_boq(boq_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        print(f"Delete Error: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Delete error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete Estimate BOQ: {str(e)}"
@@ -459,7 +573,7 @@ async def get_estimate_boq_info(boq_id: int):
     - BOQ ID, file name, project details, creation date
     """
     try:
-        from services.tbe_boq_processor import TBEBOQProcessor
+        from services.estimate_boq import TBEBOQProcessor
         
         processor = TBEBOQProcessor()
         boq_info = processor.repo.get_boq_info(boq_id)

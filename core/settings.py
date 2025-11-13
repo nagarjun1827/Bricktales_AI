@@ -1,13 +1,17 @@
-"""
-Application settings and configuration.
-"""
+import logging
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+    ]
+)
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-    
     # API Keys
     GEMINI_API_KEY: str
     
@@ -20,8 +24,7 @@ class Settings(BaseSettings):
 
     model_config = ConfigDict(
         env_file=".env",
-        extra="ignore"  # This will ignore extra fields from .env
+        extra="ignore"
     )
-
 
 settings = Settings()

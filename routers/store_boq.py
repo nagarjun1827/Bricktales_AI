@@ -1,21 +1,13 @@
-"""
-API routes for store BOQ processing.
-"""
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Body
-from pydantic import BaseModel, HttpUrl
-from models.dto import ProcessingStatus, ProcessingResult, DeleteResponse
-from services.store_boq_processor import StoreBOQProcessor
+from dto.request_dto.store_boq import StoreBOQURLRequest
+from dto.response_dto.store_boq import ProcessingStatus, ProcessingResult, DeleteResponse
+from services.store_boq import StoreBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/store-boq", tags=["Store BOQ Processing"])
-
-
-class StoreBOQURLRequest(BaseModel):
-    """Request model for Store BOQ URL upload"""
-    file_url: HttpUrl
-    uploaded_by: str = "system"
-
 
 def process_boq_background(task_id: str, file_url: str, uploaded_by: str):
     """Background task for BOQ processing from URL."""
@@ -32,6 +24,7 @@ def process_boq_background(task_id: str, file_url: str, uploaded_by: str):
             "message": "Completed" if result["success"] else f"Error: {result.get('error')}",
         })
     except Exception as e:
+        logger.error(f"Background processing failed: {e}", exc_info=True)
         processing_tasks[task_id].update({
             "status": "failed",
             "result": {"success": False, "error": str(e)},
@@ -54,11 +47,12 @@ async def upload_store_boq_url(
     4. Return complete results
     
     **Request Body:**
-```json
-{
-        "file_url": "https://example.com/boq.xlsx",
-        "uploaded_by": "user"
-    }
+    ```json
+        {
+            "file_url": "http://35.200.254.142:3000/uploads/1/ff89023ef5fa510d067f28ef121d5c45.xlsx",
+            "uploaded_by": "user"
+        }
+        
     **Returns:**
     - Task ID for tracking progress
     - Use `/status/{task_id}` to check progress
@@ -144,7 +138,7 @@ async def delete_store_boq(boq_id: int):
     **Note:** This operation cannot be undone. Make sure you want to permanently delete this data.
     """
     try:
-        from services.store_boq_processor import StoreBOQProcessor
+        from services.store_boq import StoreBOQProcessor
         
         processor = StoreBOQProcessor()
         
@@ -170,9 +164,7 @@ async def delete_store_boq(boq_id: int):
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        print(f"Delete Error: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Delete error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete Store BOQ: {str(e)}"
@@ -191,7 +183,7 @@ async def get_store_boq_info(boq_id: int):
     - BOQ ID, file name, project details, creation date
     """
     try:
-        from services.store_boq_processor import StoreBOQProcessor
+        from services.store_boq import StoreBOQProcessor
         
         processor = StoreBOQProcessor()
         boq_info = processor.repo.get_boq_info(boq_id)
