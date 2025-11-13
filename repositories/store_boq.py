@@ -1,12 +1,10 @@
 """
 Repository for store BOQ database operations.
+FIXED: Does not insert computed columns (supply_amount, labour_amount, total_amount)
 """
-import psycopg2
-from datetime import datetime
 import logging
-from psycopg2.extras import execute_values
 from typing import List, Dict, Any, Optional
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, Session
 from models.store_boq_models import StoreBoqProject, StoreBoqLocation, StoreBoqFile, StoreBoqItem
 from models.project_models import Project
@@ -20,6 +18,7 @@ class StoreBOQRepository:
     
     def __init__(self):
         # SQLAlchemy setup
+        from sqlalchemy import create_engine
         db_url = f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
         self.engine = create_engine(db_url)
         self.SessionLocal = sessionmaker(bind=self.engine)
@@ -95,29 +94,43 @@ class StoreBOQRepository:
             return boq_file.boq_id
 
     def insert_boq_items_batch(self, items: List) -> None:
-        """Batch insert BOQ items."""
+        """
+        Batch insert BOQ items.
+        
+        CRITICAL: Do NOT set supply_amount, labour_amount, or total_amount.
+        These are GENERATED columns and PostgreSQL calculates them automatically.
+        """
         if not items:
             return
         
+        logger.info(f"Inserting {len(items)} items (computed columns will be auto-calculated)")
+        
         with self._get_session() as session:
             for item in items:
+                # IMPORTANT: Only set the base columns, not the computed ones
                 boq_item = StoreBoqItem(
                     boq_id=item.boq_id,
                     item_code=item.item_code,
                     item_description=item.item_description,
                     unit_of_measurement=item.unit_of_measurement,
                     quantity=item.quantity,
-                    supply_unit_rate=item.supply_unit_rate,
-                    labour_unit_rate=item.labour_unit_rate,
+                    # Ensure rates are never NULL (use 0.0 as default)
+                    supply_unit_rate=item.supply_unit_rate if item.supply_unit_rate is not None else 0.0,
+                    labour_unit_rate=item.labour_unit_rate if item.labour_unit_rate is not None else 0.0,
                     location_id=item.location_id,
                     created_by=item.created_by
+                    # ✅ DO NOT SET: supply_amount, labour_amount, total_amount
+                    # PostgreSQL will calculate these automatically
                 )
                 session.add(boq_item)
+            
             session.commit()
+            logger.info(f"Successfully inserted {len(items)} items")
 
     def get_boq_totals(self, boq_id: int, items: List = None) -> Dict[str, float]:
         """Get BOQ totals."""
         if items:
+            # Calculate from items in memory
             return {
                 "item_count": len(items),
                 "total_supply": sum(item.supply_amount for item in items),
@@ -125,6 +138,7 @@ class StoreBOQRepository:
                 "total_amount": sum(item.total_amount for item in items),
             }
         
+        # Query from database (amounts are now computed)
         with self._get_session() as session:
             result = session.execute(
                 text("""
@@ -174,6 +188,8 @@ class StoreBOQRepository:
         with self._get_session() as session:
             for item_id, embedding in zip(item_ids, embeddings):
                 try:
+                    from datetime import datetime
+                    
                     # Get the item using ORM
                     item = session.query(StoreBoqItem).filter(
                         StoreBoqItem.item_id == item_id
@@ -187,8 +203,6 @@ class StoreBOQRepository:
                         updated += 1
                         
                 except Exception as e:
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.warning(f"Failed to update item {item_id}: {e}")
                     continue
             

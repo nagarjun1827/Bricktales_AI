@@ -66,22 +66,61 @@ class ItemExtractorAgent:
             description = self._get_value(row, col_map.get('description'), default='')
             unit = self._get_value(row, col_map.get('unit'), default='Each')
             quantity = self._extract_numeric(self._get_value(row, col_map.get('quantity')))
-            rate = self._extract_numeric(self._get_value(row, col_map.get('rate')))
-            amount = self._extract_numeric(self._get_value(row, col_map.get('amount')))
+            
+            # Extract supply rate and amount
+            supply_rate = self._extract_numeric(self._get_value(row, col_map.get('supply_rate')))
+            supply_amount = self._extract_numeric(self._get_value(row, col_map.get('supply_amount')))
+            
+            # Extract labour rate and amount
+            labour_rate = self._extract_numeric(self._get_value(row, col_map.get('labour_rate')))
+            labour_amount = self._extract_numeric(self._get_value(row, col_map.get('labour_amount')))
+            
+            # Extract total amount
+            total_amount = self._extract_numeric(self._get_value(row, col_map.get('total_amount')))
             
             # Skip invalid rows
-            if not description or (quantity == 0 and rate == 0 and amount == 0):
+            if not description:
                 continue
             if len(str(description).strip()) < 5:
                 continue
+            if quantity == 0 and supply_rate == 0 and labour_rate == 0 and supply_amount == 0 and labour_amount == 0 and total_amount == 0:
+                continue
             
-            # Derive quantity if missing but have rate and amount
-            if quantity == 0 and rate > 0 and amount > 0:
-                quantity = round(amount / rate, 4)
+            # Derive missing values intelligently
             
-            # Derive rate if missing but have quantity and amount
-            if rate == 0 and quantity > 0 and amount > 0:
-                rate = round(amount / quantity, 2)
+            # 1. Derive quantity if missing
+            if quantity == 0:
+                if supply_rate > 0 and supply_amount > 0:
+                    quantity = round(supply_amount / supply_rate, 4)
+                elif labour_rate > 0 and labour_amount > 0:
+                    quantity = round(labour_amount / labour_rate, 4)
+                elif (supply_rate + labour_rate) > 0 and total_amount > 0:
+                    quantity = round(total_amount / (supply_rate + labour_rate), 4)
+            
+            # 2. Derive supply_rate if missing but have supply_amount and quantity
+            if supply_rate == 0 and supply_amount > 0 and quantity > 0:
+                supply_rate = round(supply_amount / quantity, 2)
+            
+            # 3. Derive labour_rate if missing but have labour_amount and quantity
+            if labour_rate == 0 and labour_amount > 0 and quantity > 0:
+                labour_rate = round(labour_amount / quantity, 2)
+            
+            # 4. If we have total_amount but no supply/labour breakdown, try to derive
+            if total_amount > 0 and quantity > 0:
+                if supply_rate == 0 and labour_rate == 0:
+                    # Assume all is supply if no labour info
+                    if labour_amount == 0:
+                        supply_rate = round(total_amount / quantity, 2)
+                    # If labour_amount exists, derive labour_rate
+                    elif labour_amount > 0:
+                        labour_rate = round(labour_amount / quantity, 2)
+                        remaining = total_amount - labour_amount
+                        if remaining > 0:
+                            supply_rate = round(remaining / quantity, 2)
+            
+            # Final validation - skip if no meaningful data
+            if quantity == 0:
+                continue
             
             # Create item
             item = BOQItem(
@@ -90,8 +129,8 @@ class ItemExtractorAgent:
                 item_description=str(description).strip(),
                 unit_of_measurement=self._normalize_unit(unit),
                 quantity=quantity,
-                supply_unit_rate=rate,
-                labour_unit_rate=0.0,
+                supply_unit_rate=supply_rate,
+                labour_unit_rate=labour_rate,
                 location_id=location_id,
                 created_by='system'
             )

@@ -3,21 +3,15 @@ Repository for To-Be-Estimated BOQ operations using SQLAlchemy.
 """
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
-from sqlalchemy import func, text, select, delete
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-
 from connections.postgres_connection import get_db_session
 from models.project_models import Project
-from models.estimate_boq_models import (
-    EstimateBoqProject, EstimateBoqLocation, EstimateBoqFile, EstimateBoqItem
-)
+from models.estimate_boq_models import EstimateBoqProject, EstimateBoqLocation, EstimateBoqFile, EstimateBoqItem
 from models.store_boq_models import StoreBoqProject
 
 logger = logging.getLogger(__name__)
 
-
-# Data transfer classes for backward compatibility
 class TBEProjectInfo:
     def __init__(self, project_name, project_code, project_type, client_name=None,
                  start_date=None, end_date=None, version=1, created_by="system"):
@@ -29,7 +23,6 @@ class TBEProjectInfo:
         self.end_date = end_date
         self.version = version
         self.created_by = created_by
-
 
 class EstimateBOQProjectInfo:
     def __init__(self, project_id, estimate_project_name, estimate_project_code,
@@ -43,7 +36,6 @@ class EstimateBOQProjectInfo:
         self.estimated_by = estimated_by
         self.estimated_at = estimated_at
         self.created_by = created_by
-
 
 class TBELocationInfo:
     def __init__(self, estimate_project_id, location_name, address=None,
@@ -66,7 +58,6 @@ class TBEBOQFileInfo:
         self.version = version
         self.is_active = is_active
         self.created_by = created_by
-
 
 class TBEBOQItem:
     def __init__(self, boq_id, item_description, unit_of_measurement, quantity,

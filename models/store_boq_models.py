@@ -63,6 +63,15 @@ class StoreBoqFile(Base):
 
 
 class StoreBoqItem(Base):
+    """
+    StoreBoqItem model - COMPUTED COLUMNS NOT DECLARED HERE.
+    
+    The columns supply_amount, labour_amount, and total_amount exist in the database
+    as GENERATED STORED columns, but we DON'T declare them in SQLAlchemy.
+    
+    This prevents SQLAlchemy from trying to insert values into them.
+    If you need to read these values, query them explicitly in your SQL.
+    """
     __tablename__ = "store_boq_items"
 
     item_id = Column(Integer, primary_key=True)
@@ -71,11 +80,13 @@ class StoreBoqItem(Base):
     item_description = Column(Text, nullable=False)
     unit_of_measurement = Column(String(20), nullable=False)
     quantity = Column(DECIMAL(18, 3), nullable=False)
-    supply_unit_rate = Column(DECIMAL(18, 2))
-    supply_amount = Column(DECIMAL(18, 2))
-    labour_unit_rate = Column(DECIMAL(18, 2))
-    labour_amount = Column(DECIMAL(18, 2))
-    total_amount = Column(DECIMAL(18, 2))
+    supply_unit_rate = Column(DECIMAL(18, 2), nullable=False, default=0.0, server_default='0.0')
+    labour_unit_rate = Column(DECIMAL(18, 2), nullable=False, default=0.0, server_default='0.0')
+    
+    # NOTE: supply_amount, labour_amount, total_amount are NOT declared here
+    # They exist in the database as GENERATED columns
+    # PostgreSQL will calculate them automatically on INSERT
+    
     location_id = Column(Integer, ForeignKey("store_boq_locations.location_id"))
     created_by = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())

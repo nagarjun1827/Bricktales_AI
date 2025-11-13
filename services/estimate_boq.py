@@ -1,5 +1,6 @@
 """
 Service for processing To-Be-Estimated BOQ files from URL with automatic price fetching.
+UPDATED: Properly handles labour rates in price estimation.
 """
 import time
 import re
@@ -445,18 +446,32 @@ class TBEBOQProcessor:
                     logger.debug(f"Found match (similarity: {similarity_score:.3f})")
                     items_with_prices += 1
                     
-                    # Use rates from the best match directly
-                    estimated_supply_rate = float(best_match['supply_rate']) if best_match['supply_rate'] > 0 else None
-                    estimated_labour_rate = float(best_match['labour_rate']) if best_match['labour_rate'] > 0 else None
+                    # Use rates from the best match directly - handle None/0 properly
+                    estimated_supply_rate = None
+                    estimated_labour_rate = None
                     
-                    # Estimated totals
-                    estimated_supply_total = estimated_supply_rate * quantity if estimated_supply_rate else None
-                    estimated_labour_total = estimated_labour_rate * quantity if estimated_labour_rate else None
-                    estimated_total = None
-                    if estimated_supply_total is not None and estimated_labour_total is not None:
-                        estimated_total = estimated_supply_total + estimated_labour_total
-                    elif estimated_supply_total is not None:
-                        estimated_total = estimated_supply_total
+                    if best_match.get('supply_rate') and float(best_match['supply_rate']) > 0:
+                        estimated_supply_rate = float(best_match['supply_rate'])
+                    
+                    if best_match.get('labour_rate') and float(best_match['labour_rate']) > 0:
+                        estimated_labour_rate = float(best_match['labour_rate'])
+                    
+                    # Calculate estimated totals
+                    estimated_supply_total = None
+                    estimated_labour_total = None
+                    estimated_total = 0.0
+                    
+                    if estimated_supply_rate:
+                        estimated_supply_total = estimated_supply_rate * quantity
+                        estimated_total += estimated_supply_total
+                    
+                    if estimated_labour_rate:
+                        estimated_labour_total = estimated_labour_rate * quantity
+                        estimated_total += estimated_labour_total
+                    
+                    # Set estimated_total to None if both are None
+                    if estimated_supply_total is None and estimated_labour_total is None:
+                        estimated_total = None
                     
                     # Build pricing source explanation
                     pricing_source = self._build_pricing_source(best_match, similarity_score)
