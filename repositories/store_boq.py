@@ -103,7 +103,7 @@ class StoreBOQRepository:
         if not items:
             return
         
-        logger.info(f"Inserting {len(items)} items (computed columns will be auto-calculated)")
+        logger.info(f"Inserting {len(items)} items")
         
         with self._get_session() as session:
             for item in items:

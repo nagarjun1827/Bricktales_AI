@@ -56,104 +56,75 @@ class StoreBOQProcessor:
         Returns:
             Processing results with embeddings
         """
-        logger.info("STARTING STORE BOQ PROCESSING FROM URL")
+        logger.info("QuoCO - Store BOQ Processing Started")
         logger.info(f"File URL: {file_url}")
-        logger.info(f"Uploaded by: {uploaded_by}")
 
         start_time = time.time()
 
         try:
             # Step 1: Download and read Excel file from URL
-            logger.info("STEP 1: DOWNLOADING AND READING EXCEL FILE")
             sheets = self._read_excel_from_url(file_url)
-            logger.info(f"  Sheet names: {', '.join(sheets.keys())}")
 
             # Step 2: Extract project information
-            logger.info("STEP 2: EXTRACTING PROJECT INFORMATION")
             first_sheet = list(sheets.values())[0]
             project_data = self._extract_project_info(first_sheet)
-            logger.info(f"✓ Project Name: {project_data['project_name']}")
+            logger.info(f"Project Name: {project_data['project_name']}")
             # logger.info(f"  Project Code: {project_data['project_code']}")
             # logger.info(f"  Client: {project_data.get('client_name', 'N/A')}")
             # logger.info(f"  Year: {project_data.get('start_year', 'N/A')}")
 
             # Step 3: Extract location information
-            logger.info("STEP 3: EXTRACTING LOCATION INFORMATION")
             location_data = self._extract_location_info(first_sheet)
-            logger.info(f"✓ Location: {location_data['location_name']}")
+            logger.info(f"Location: {location_data['location_name']}")
             # logger.info(f"  City: {location_data.get('city', 'N/A')}")
             # logger.info(f"  State: {location_data.get('state', 'N/A')}")
 
             # Step 4: Save project to database
-            logger.info("STEP 4: SAVING PROJECT TO DATABASE")
             project_id = self._save_project(project_data, uploaded_by)
-            logger.info(f"✓ Project ID: {project_id}")
+            logger.info(f"Project ID: {project_id}")
 
             # Step 5: Save store project to database
-            logger.info("STEP 5: SAVING STORE PROJECT TO DATABASE")
             store_project_id = self._save_store_project(project_id, project_data, uploaded_by)
-            logger.info(f"✓ Store Project ID: {store_project_id}")
+            logger.info(f"Store Project ID: {store_project_id}")
 
-            # Step 6: Save location to database
-            
-            logger.info("STEP 6: SAVING LOCATION TO DATABASE")
-            
+            # Step 6: Save location to database          
             location_id = self._save_location(store_project_id, location_data)
-            logger.info(f"✓ Location ID: {location_id}")
+            logger.info(f"Location ID: {location_id}")
 
             # Step 7: Extract file information and create BOQ file record
-            
-            logger.info("STEP 7: EXTRACTING FILE INFO AND CREATING BOQ RECORD")
-            
             file_info = self._extract_file_info(file_url)
             # logger.info(f"  File Name: {file_info['file_name']}")
             # logger.info(f"  File Type: {file_info['file_type']}")
             boq_id = self._create_boq_file(store_project_id, file_info, uploaded_by)
-            logger.info(f"✓ BOQ ID: {boq_id}")
+            logger.info(f"BOQ ID: {boq_id}")
 
-            # Step 8: Filter and process sheets
-            
-            logger.info("STEP 8: FILTERING AND PROCESSING SHEETS")
-            
+            # Step 8: Filter and process sheets           
             boq_sheets = self._filter_sheets(sheets)
-            logger.info(f"✓ Found {len(boq_sheets)} BOQ sheets to process")
+            logger.info(f"Found {len(boq_sheets)} BOQ sheets to process")
             for sheet_name in boq_sheets.keys():
                 logger.info(f"  - {sheet_name}")
 
             # Step 9: Extract line items from all sheets
-            
-            logger.info("STEP 9: EXTRACTING LINE ITEMS FROM SHEETS")
-            
             all_items = self._extract_all_items(boq_sheets, boq_id, location_id)
-            logger.info(f"✓ Total items extracted: {len(all_items)}")
+            logger.info(f"Total items extracted: {len(all_items)}")
 
             # Step 10: Insert items into database
-            
-            logger.info("STEP 10: INSERTING ITEMS INTO DATABASE")
-            
             self.repo.insert_boq_items_batch(all_items)
-            logger.info(f"✓ Successfully inserted {len(all_items)} items")
 
             # Step 11: Calculate totals
-            
-            logger.info("STEP 11: CALCULATING TOTALS")
-            
             totals = self.repo.get_boq_totals(boq_id, all_items)
-            logger.info(f"✓ Total Items: {totals['item_count']}")
-            logger.info(f"  Supply Amount: ₹{totals['total_supply']:,.2f}")
-            logger.info(f"  Labour Amount: ₹{totals['total_labour']:,.2f}")
-            logger.info(f"  Total Amount: ₹{totals['total_amount']:,.2f}")
+            logger.info(f"Total Items: {totals['item_count']}")
+            logger.info(f"Supply Amount: ₹{totals['total_supply']:,.2f}")
+            logger.info(f"Labour Amount: ₹{totals['total_labour']:,.2f}")
+            logger.info(f"Total Amount: ₹{totals['total_amount']:,.2f}")
 
             # Step 12: Generate embeddings
-            
-            logger.info("STEP 12: GENERATING EMBEDDINGS")
-            
             embedding_result = self._generate_embeddings(boq_id, all_items)
             if embedding_result["generated"]:
-                logger.info(f"✓ Embeddings Generated: {embedding_result['count']}")
-                logger.info(f"  Embedding Time: {embedding_result['time']:.2f}s")
+                logger.info(f"Embeddings Generated: {embedding_result['count']}")
+                logger.info(f"Embedding Time: {embedding_result['time']:.2f}s")
             else:
-                logger.info("✓ Embeddings skipped (already exist or no items)")
+                logger.info("Embeddings skipped (already exist or no items)")
 
             elapsed = time.time() - start_time
 
@@ -205,7 +176,6 @@ class StoreBOQProcessor:
             logger.info(f"File downloaded successfully ({file_size:,} bytes)")
             
             # Read Excel from bytes
-            logger.info("Parsing Excel file...")
             excel_file = pd.ExcelFile(io.BytesIO(response.content))
             sheets = {
                 name: pd.read_excel(io.BytesIO(response.content), sheet_name=name) 
@@ -224,10 +194,8 @@ class StoreBOQProcessor:
         text_sample = self._extract_text(first_sheet, 50)
         
         try:
-            logger.info("Calling Gemini AI to extract project info...")
             project_json = self.project_tool.invoke({"text": text_sample})
             project_data = json.loads(project_json)
-            logger.info("Project info extracted successfully")
             return project_data
         except Exception as e:
             logger.warning(f"Project extraction failed: {e}")
@@ -245,10 +213,8 @@ class StoreBOQProcessor:
         text_sample = self._extract_text(first_sheet, 50)
         
         try:
-            logger.info("Calling Gemini AI to extract location info...")
             location_json = self.location_tool.invoke({"text": text_sample})
             location_data = json.loads(location_json)
-            logger.info("Location info extracted successfully")
             return location_data
         except Exception as e:
             logger.warning(f"Location extraction failed: {e}")
@@ -321,7 +287,6 @@ class StoreBOQProcessor:
         all_items = []
         
         for idx, (sheet_name, sheet_df) in enumerate(sheets.items(), 1):
-            logger.info(f"\nProcessing sheet {idx}/{len(sheets)}: '{sheet_name}'")
             
             items = self._process_sheet(sheet_df, sheet_name, boq_id, location_id)
             
@@ -342,7 +307,6 @@ class StoreBOQProcessor:
             structure = json.loads(structure_json)
             
             # Step 2: Log detected columns
-            logger.info(f"  Detected columns:")
             column_types_found = []
             for col in structure.get('column_structure', []):
                 col_position = col['position']
@@ -350,13 +314,7 @@ class StoreBOQProcessor:
                 col_desc = col['description']
                 # Get actual column header from DataFrame
                 actual_header = sheet_df.columns[col_position] if col_position < len(sheet_df.columns) else 'N/A'
-                logger.info(f"    Position {col_position}: {col_type} - '{actual_header}' ({col_desc})")
                 column_types_found.append(col_type)
-            
-            # NEW: Show all columns for debugging
-            logger.info(f"  All columns in sheet:")
-            for idx, col in enumerate(sheet_df.columns):
-                logger.info(f"    {idx}: '{col}'")
             
             # Step 3: Check for required columns
             required = ['description', 'quantity']
@@ -371,7 +329,7 @@ class StoreBOQProcessor:
             
             # Step 5: Log extraction summary
             if items:
-                logger.info(f"  Line item extraction summary:")
+                logger.info(f"  LINE ITEM EXTRACTION SUMMARY:")
                 logger.info(f"    Total items: {len(items)}")
                 
                 items_with_supply = sum(1 for item in items if item.supply_unit_rate > 0)
@@ -405,7 +363,7 @@ class StoreBOQProcessor:
             # Initialize pgvector
             logger.info("Initializing vector database...")
             self.repo.ensure_vector_extension()
-            logger.info("✓ Database ready")
+            logger.info("Database ready")
             
             # Get items without embeddings
             items_to_embed = self.repo.get_items_without_embeddings(boq_id)
@@ -439,7 +397,7 @@ class StoreBOQProcessor:
                             result['embeddings']
                         )
                         total_generated += updated
-                        logger.info(f"  ✓ Saved {updated} embeddings")
+                        logger.info(f"Saved {updated} embeddings")
                     
                     # Track failed items
                     failed_items.extend(result['failed_item_ids'])
@@ -461,7 +419,6 @@ class StoreBOQProcessor:
                 if len(failed_items) > 20:
                     logger.warning(f"  ... and {len(failed_items) - 20} more")
             logger.info(f"  Time taken: {embedding_time:.2f}s")
-            logger.info(f"  Average: {embedding_time/len(items_to_embed):.3f}s per item")
             
             return {
                 "generated": True,

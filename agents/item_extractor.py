@@ -181,8 +181,6 @@ class ItemExtractorAgent:
             items.append(item)
         
         logger.info(f"Extracted {len(items)} valid items")
-        logger.info(f"  Items with supply_rate: {items_with_supply_rate}")
-        logger.info(f"  Items with labour_rate: {items_with_labour_rate}")
         
         # Calculate summary
         total_supply = sum(item.supply_amount for item in items)

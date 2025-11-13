@@ -54,7 +54,7 @@ def init_db(create_tables: bool = False):
         # Log existing tables
         inspector = inspect(engine)
         tables = inspector.get_table_names()
-        logger.info(f"Database has {len(tables)} tables: {', '.join(tables[:10])}")
+        logger.info(f"Database has {len(tables)} tables")
         
         logger.info("Database initialization complete")
         
