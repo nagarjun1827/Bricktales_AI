@@ -5,12 +5,14 @@ import json
 import time
 import requests
 import io
+import logging
 from typing import Dict, Any
 import pandas as pd
 import google.generativeai as genai
 
-from models.domain import ProjectInfo, StoreBOQProjectInfo, LocationInfo, BOQFileInfo
-from repositories.store_boq_repository import StoreBOQRepository
+from models.store_boq_models import StoreBoqFile, StoreBoqLocation, StoreBoqProject
+from models.project_models import Project
+from repositories.store_boq import StoreBOQRepository
 from agents.gemini_tools import (
     AnalyzeSheetStructureTool,
     ExtractProjectInfoTool,
@@ -19,6 +21,8 @@ from agents.gemini_tools import (
 from agents.item_extractor import ItemExtractorAgent
 from core.settings import settings
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class StoreBOQProcessor:
@@ -38,7 +42,7 @@ class StoreBOQProcessor:
     def process_file_from_url(
         self, 
         file_url: str, 
-        uploaded_by: str = "system"
+        uploaded_by: str = "user"
     ) -> Dict[str, Any]:
         """
         Process store BOQ file from URL with automatic embedding generation.
@@ -50,19 +54,15 @@ class StoreBOQProcessor:
         Returns:
             Processing results with embeddings
         """
-        print(f"\n{'='*70}")
-        print(f"🤖 STORE BOQ PROCESSOR FROM URL")
-        print(f"🧠 WITH AUTOMATIC EMBEDDING GENERATION")
-        print(f"{'='*70}")
-        print(f"URL: {file_url}\n")
+        logger.info(f"Storage file URL: {file_url}")
 
         start_time = time.time()
 
         try:
             # Step 1: Download and read Excel file from URL
-            print("📥 Step 1: Downloading and reading Excel file from URL...")
+            logger.info("Step 1: Downloading and reading Excel file from URL")
             sheets = self._read_excel_from_url(file_url)
-            print(f"   ✓ Read {len(sheets)} sheets\n")
+            logger.info(f"Read {len(sheets)} sheets")
 
             # Step 2-6: Extract and save project/store_project/location
             first_sheet = list(sheets.values())[0]
@@ -71,22 +71,22 @@ class StoreBOQProcessor:
             )
 
             # Step 7: Create BOQ file record
-            print("💾 Step 7: Creating BOQ file record...")
+            logger.info("Step 7: Creating BOQ file record")
             boq_id = self._create_boq_file(store_project_id, file_url, uploaded_by)
-            print(f"   ✓ BOQ ID: {boq_id}\n")
+            logger.info(f"BOQ ID: {boq_id}")
 
             # Step 8: Process sheets and extract items
-            print("📊 Step 8: Processing sheets and extracting items...")
+            logger.info("Step 8: Processing sheets and extracting items")
             boq_sheets = self._filter_sheets(sheets)
             all_items = self._extract_all_items(boq_sheets, boq_id, location_id)
 
             # Step 9: Insert items
-            print(f"\n💾 Step 9: Inserting {len(all_items)} items...")
+            logger.info(f"Step 9: Inserting {len(all_items)} items")
             self.repo.insert_boq_items_batch(all_items)
-            print(f"   ✓ Items inserted\n")
+            logger.info("Items inserted successfully")
 
             # Step 10: Get totals
-            print("📊 Step 10: Calculating totals...")
+            logger.info("Step 10: Calculating totals")
             totals = self.repo.get_boq_totals(boq_id, all_items)
 
             # Step 11: Generate embeddings
@@ -94,7 +94,7 @@ class StoreBOQProcessor:
 
             elapsed = time.time() - start_time
 
-            self._print_summary(
+            self._log_summary(
                 project_id, store_project_id, location_id, boq_id, 
                 totals, embedding_result, elapsed
             )
@@ -115,20 +115,18 @@ class StoreBOQProcessor:
             }
 
         except Exception as e:
-            print(f"\n✗ ERROR: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Processing failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _read_excel_from_url(self, file_url: str) -> Dict[str, pd.DataFrame]:
         """Read all sheets from Excel file at URL."""
         try:
-            print(f"   Fetching file from URL...")
+            logger.info("Fetching file from URL")
             response = requests.get(file_url, timeout=120)
             response.raise_for_status()
             
-            print(f"   File downloaded ({len(response.content)} bytes)")
-            print(f"   Reading Excel sheets...")
+            logger.info(f"File downloaded ({len(response.content)} bytes)")
+            logger.info("Reading Excel sheets")
             
             # Read Excel from bytes
             excel_file = pd.ExcelFile(io.BytesIO(response.content))
@@ -146,7 +144,7 @@ class StoreBOQProcessor:
 
     def _process_metadata(self, first_sheet: pd.DataFrame, uploaded_by: str) -> tuple:
         """Extract and save project, store project, and location metadata."""
-        print("🔍 Step 2: Extracting project information...")
+        logger.info("Step 2: Extracting project information")
         text_sample = self._extract_text(first_sheet, 50)
         
         # Extract project
@@ -154,33 +152,33 @@ class StoreBOQProcessor:
         project_data = json.loads(project_json)
         project_info = self._build_project_info(project_data, uploaded_by)
         
-        print(f"   ✓ Project: {project_info.project_name}")
+        logger.info(f"Project: {project_info.project_name}")
         
         # Insert project
-        print("\n💾 Step 3: Saving project...")
+        logger.info("Step 3: Saving project")
         project_id = self.repo.insert_project(project_info)
-        print(f"   ✓ Project ID: {project_id}")
+        logger.info(f"Project ID: {project_id}")
         
         # Create store BOQ project
-        print("\n💾 Step 4: Creating store BOQ project...")
+        logger.info("Step 4: Creating store BOQ project")
         store_project_info = self._build_store_project_info(
             project_id, project_data, uploaded_by
         )
         store_project_id = self.repo.insert_store_boq_project(store_project_info)
-        print(f"   ✓ Store Project ID: {store_project_id}")
+        logger.info(f"Store Project ID: {store_project_id}")
         
         # Extract location
-        print("\n🔍 Step 5: Extracting location...")
+        logger.info("Step 5: Extracting location")
         location_json = self.location_tool._run(text_sample)
         location_data = json.loads(location_json)
         location_info = self._build_location_info(location_data, store_project_id)
         
-        print(f"   ✓ Location: {location_info.location_name}")
+        logger.info(f"Location: {location_info.location_name}")
         
         # Insert location
-        print("\n💾 Step 6: Saving location...")
+        logger.info("Step 6: Saving location")
         location_id = self.repo.insert_location(location_info)
-        print(f"   ✓ Location ID: {location_id}\n")
+        logger.info(f"Location ID: {location_id}")
         
         return project_id, store_project_id, location_id
 
@@ -194,7 +192,7 @@ class StoreBOQProcessor:
         except:
             filename = "boq_from_url.xlsx"
             
-        file_info = BOQFileInfo(
+        file_info = StoreBoqFile(
             store_project_id=store_project_id,
             file_name=filename,
             file_path=file_url,  # Store URL instead of local path
@@ -205,10 +203,10 @@ class StoreBOQProcessor:
     def _extract_all_items(self, sheets: Dict, boq_id: int, location_id: int):
         """Extract items from all sheets."""
         all_items = []
-        print(f"   Processing {len(sheets)} sheet(s)...\n")
+        logger.info(f"Processing {len(sheets)} sheet(s)")
         
         for sheet_name, sheet_df in sheets.items():
-            print(f"   📄 {sheet_name}")
+            logger.info(f"Processing sheet: {sheet_name}")
             items = self._process_sheet(sheet_df, sheet_name, boq_id, location_id)
             all_items.extend(items)
             
@@ -220,7 +218,7 @@ class StoreBOQProcessor:
         structure_json = self.structure_tool._run(sheet_text, sheet_name)
         structure = json.loads(structure_json)
         
-        print(f"      ✓ Structure analyzed")
+        logger.debug("Structure analyzed")
         items = self.item_extractor.execute(sheet_df, structure, boq_id, location_id)
         return items
 
@@ -229,26 +227,24 @@ class StoreBOQProcessor:
         if not items:
             return {"generated": False, "count": 0, "time": 0}
 
-        print(f"\n{'='*70}")
-        print("🧠 AUTOMATIC EMBEDDING GENERATION")
-        print(f"{'='*70}\n")
+        logger.info("Embedding Generation Started")
         
         embedding_start = time.time()
         
         try:
             # Initialize pgvector
-            print("🔧 Initializing vector database...")
+            logger.info("Initializing vector database")
             self.repo.ensure_vector_extension()
-            print("   ✓ Database ready\n")
+            logger.info("Database ready")
             
             # Get items without embeddings
             items_to_embed = self.repo.get_items_without_embeddings(boq_id)
             
             if not items_to_embed:
-                print("   ✓ All items already have embeddings\n")
+                logger.info("All items already have embeddings")
                 return {"generated": False, "count": 0, "time": 0}
             
-            print(f"📝 Generating embeddings for {len(items_to_embed)} items...")
+            logger.info(f"Generating embeddings for {len(items_to_embed)} items")
             
             # Generate embeddings in batches
             batch_size = 100
@@ -259,7 +255,7 @@ class StoreBOQProcessor:
                 batch_num = (i // batch_size) + 1
                 total_batches = (len(items_to_embed) + batch_size - 1) // batch_size
                 
-                print(f"   Batch {batch_num}/{total_batches} ({len(batch)} items)...")
+                logger.info(f"Batch {batch_num}/{total_batches} ({len(batch)} items)")
                 
                 # Generate embeddings
                 item_ids = []
@@ -275,20 +271,20 @@ class StoreBOQProcessor:
                         item_ids.append(item.item_id)
                         embeddings.append(result['embedding'])
                     except Exception as e:
-                        print(f"      ⚠ Failed for item {item.item_id}: {e}")
+                        logger.warning(f"Failed for item {item.item_id}: {e}")
                         continue
                 
                 # Save to database
                 if item_ids and embeddings:
                     updated = self.repo.update_embeddings_batch(item_ids, embeddings)
                     total_generated += updated
-                    print(f"   ✓ Saved {updated} embeddings")
+                    logger.info(f"Saved {updated} embeddings")
             
             embedding_time = time.time() - embedding_start
             
-            print(f"\n✓ Embeddings complete!")
-            print(f"   Total generated: {total_generated}")
-            print(f"   Time: {embedding_time:.2f}s\n")
+            logger.info("Embeddings complete")
+            logger.info(f"Total generated: {total_generated}")
+            logger.info(f"Time: {embedding_time:.2f}s")
             
             return {
                 "generated": True,
@@ -297,7 +293,7 @@ class StoreBOQProcessor:
             }
             
         except Exception as e:
-            print(f"\n⚠ Embedding error: {e}\n")
+            logger.error(f"Embedding error: {e}", exc_info=True)
             return {
                 "generated": False,
                 "count": 0,
@@ -335,14 +331,14 @@ class StoreBOQProcessor:
         }
 
     @staticmethod
-    def _build_project_info(data: dict, uploaded_by: str) -> ProjectInfo:
+    def _build_project_info(data: dict, uploaded_by: str) -> Project:
         """Build ProjectInfo from extracted data."""
         start_date = f"{data['start_year']}-01-01" if data.get('start_year') else None
         end_date = f"{data['end_year']}-12-31" if data.get('end_year') else (
             f"{data['start_year']}-12-31" if data.get('start_year') else None
         )
         
-        return ProjectInfo(
+        return Project(
             project_name=data.get("project_name", "BOQ Project"),
             project_code=data.get("project_code", f"PROJ-{datetime.now():%Y%m%d}"),
             project_type="boq",
@@ -357,10 +353,10 @@ class StoreBOQProcessor:
         project_id: int, 
         data: dict, 
         uploaded_by: str
-    ) -> StoreBOQProjectInfo:
+    ) -> StoreBoqProject:
         """Build StoreBOQProjectInfo from extracted data."""
         project_name = data.get("project_name", "BOQ Project")
-        return StoreBOQProjectInfo(
+        return StoreBoqProject(
             project_id=project_id,
             store_project_name=f"{project_name} - Store",
             store_project_code=f"STORE-{datetime.now():%Y%m%d%H%M}",
@@ -368,7 +364,7 @@ class StoreBOQProcessor:
         )
 
     @staticmethod
-    def _build_location_info(data: dict, store_project_id: int) -> LocationInfo:
+    def _build_location_info(data: dict, store_project_id: int) -> StoreBoqLocation:
         """Build LocationInfo from extracted data."""
         address_parts = [data.get("location_name", "Unknown")]
         if data.get("city"):
@@ -376,31 +372,29 @@ class StoreBOQProcessor:
         if data.get("state"):
             address_parts.append(data["state"])
             
-        return LocationInfo(
+        return StoreBoqLocation(
             store_project_id=store_project_id,
             location_name=data.get("location_name", "Unknown"),
             address=", ".join(address_parts),
         )
 
     @staticmethod
-    def _print_summary(
+    def _log_summary(
         project_id, store_project_id, location_id, boq_id, 
         totals, embedding_result, elapsed
     ):
-        """Print processing summary."""
-        print(f"\n{'='*70}")
-        print("✓ PROCESSING COMPLETE")
-        print(f"{'='*70}")
-        print(f"Project ID:           {project_id}")
-        print(f"Store Project ID:     {store_project_id}")
-        print(f"Location ID:          {location_id}")
-        print(f"BOQ File ID:          {boq_id}")
-        print(f"Total Items:          {totals['item_count']}")
-        print(f"Supply Amount:        ₹{totals['total_supply']:,.2f}")
-        print(f"Labour Amount:        ₹{totals['total_labour']:,.2f}")
-        print(f"Total Amount:         ₹{totals['total_amount']:,.2f}")
+        """Log processing summary."""
+        logger.info("Processing Summary Generating")
+
+        logger.info(f"Project ID: {project_id}")
+        logger.info(f"Store Project ID: {store_project_id}")
+        logger.info(f"Location ID: {location_id}")
+        logger.info(f"BOQ File ID: {boq_id}")
+        logger.info(f"Total Items: {totals['item_count']}")
+        logger.info(f"Supply Amount: ₹{totals['total_supply']:,.2f}")
+        logger.info(f"Labour Amount: ₹{totals['total_labour']:,.2f}")
+        logger.info(f"Total Amount: ₹{totals['total_amount']:,.2f}")
         if embedding_result["generated"]:
-            print(f"Embeddings Generated: {embedding_result['count']}")
-            print(f"Embedding Time:       {embedding_result['time']:.2f}s")
-        print(f"Total Time:           {elapsed:.2f}s")
-        print(f"{'='*70}\n")
+            logger.info(f"Embeddings Generated: {embedding_result['count']}")
+            logger.info(f"Embedding Time: {embedding_result['time']:.2f}s")
+        logger.info(f"Total Time: {elapsed:.2f}s")

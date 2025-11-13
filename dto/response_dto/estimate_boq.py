@@ -3,7 +3,7 @@ from typing import Optional, List
 
 class TBEProcessingStatus(BaseModel):
     task_id: str
-    status: str  # pending, processing_file, generating_embeddings, fetching_prices, exporting_excel, completed, failed
+    status: str
     message: str
     progress: Optional[float] = None
     current_step: Optional[str] = None

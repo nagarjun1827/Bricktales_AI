@@ -14,6 +14,11 @@ class PatternMatcher:
         'description': [r'description', r'particulars', r'scope[\s_-]*of[\s_-]*work'],
         'quantity': [r'qty', r'quantity', r'qnty'],
         'unit': [r'unit', r'uom', r'unit[\s_-]*of[\s_-]*measurement'],
+        'supply_rate': [r'supply[\s_-]*rate', r'material[\s_-]*rate', r'supply[\s_-]*unit[\s_-]*rate', r'unit[\s_-]*rate'],
+        'labour_rate': [r'labour[\s_-]*rate', r'labor[\s_-]*rate', r'labour[\s_-]*unit[\s_-]*rate', r'labor[\s_-]*unit[\s_-]*rate'],
+        'supply_amount': [r'supply[\s_-]*amount', r'material[\s_-]*amount', r'supply[\s_-]*total'],
+        'labour_amount': [r'labour[\s_-]*amount', r'labor[\s_-]*amount', r'labour[\s_-]*total', r'labor[\s_-]*total'],
+        'total_amount': [r'total[\s_-]*amount', r'total', r'amount', r'grand[\s_-]*total'],
     }
     
     @classmethod
