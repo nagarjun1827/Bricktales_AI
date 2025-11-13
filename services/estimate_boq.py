@@ -331,7 +331,7 @@ class TBEBOQProcessor:
             raise Exception(f"Failed to read Excel file: {str(e)}")
     
     def _generate_embeddings_for_items(self, boq_id: int) -> Dict[str, Any]:
-        """Generate embeddings for all items in TBE BOQ."""
+        """Generate embeddings for all items in TBE BOQ using parallel batch processing."""
         try:
             # Get all items
             items = self.repo.get_tbe_items_by_boq(boq_id, limit=10000, offset=0)
@@ -339,10 +339,11 @@ class TBEBOQProcessor:
             if not items:
                 return {'success': False, 'error': 'No items found to generate embeddings'}
             
-            logger.info(f"Generating embeddings for {len(items)} items")
+            logger.info(f"Generating embeddings for {len(items)} items in parallel batches...")
             
-            batch_size = 100
+            batch_size = 100  # Gemini supports up to 100 items per batch
             embeddings_map = {}  # item_id -> embedding
+            failed_items = []
             
             for i in range(0, len(items), batch_size):
                 batch = items[i:i + batch_size]
@@ -351,28 +352,46 @@ class TBEBOQProcessor:
                 
                 logger.info(f"Batch {batch_num}/{total_batches} ({len(batch)} items)")
                 
-                for item in batch:
-                    try:
-                        result = genai.embed_content(
-                            model=self.embedding_model,
-                            content=item['item_description'],
-                            task_type="retrieval_query"
-                        )
-                        embeddings_map[item['item_id']] = result['embedding']
-                    except Exception as e:
-                        logger.warning(f"Failed for item {item['item_id']}: {e}")
-                        continue
+                # Prepare batch data
+                batch_descriptions = [item['item_description'] for item in batch]
+                batch_item_ids = [item['item_id'] for item in batch]
                 
-                logger.info(f"Generated {len(batch)} embeddings")
+                try:
+                    # Generate embeddings for entire batch in one API call
+                    result = genai.embed_content(
+                        model=self.embedding_model,
+                        content=batch_descriptions,
+                        task_type="retrieval_query"
+                    )
+                    
+                    # Store embeddings
+                    embeddings = result['embedding']
+                    for item_id, embedding in zip(batch_item_ids, embeddings):
+                        embeddings_map[item_id] = embedding
+                    
+                    logger.info(f"Generated {len(embeddings)} embeddings")
+                    
+                except Exception as e:
+                    logger.warning(f"Batch {batch_num} failed: {e}")
+                    failed_items.extend(batch_item_ids)
+                    continue
+                
+                # Add small delay between batches
+                if batch_num < total_batches:
+                    import time
+                    time.sleep(0.5)
             
             logger.info(f"Total embeddings generated: {len(embeddings_map)}")
+            if failed_items:
+                logger.warning(f"Failed items: {len(failed_items)}")
             
             # Store embeddings temporarily in class instance for price fetching
             self._embeddings_cache = embeddings_map
             
             return {
                 'success': True,
-                'count': len(embeddings_map)
+                'count': len(embeddings_map),
+                'failed': len(failed_items)
             }
             
         except Exception as e:
