@@ -78,6 +78,14 @@ IMPORTANT NOTES:
 - Look for columns with currency symbols (₹) and numeric values after quantity column
 - If you see only one "Rate" column, classify it as supply_rate
 - Check the actual data values, not just headers
+Column types: item_code, description, unit, quantity, supply_rate, labour_rate, supply_amount, labour_amount, total_amount
+
+Notes:
+- supply_rate: Unit rate for supply/material (may be labeled as "rate", "supply rate", "material rate", "unit rate")
+- labour_rate: Unit rate for labour (may be labeled as "labour rate", "labor rate", "labour unit rate")
+- supply_amount: Total supply amount (quantity × supply_rate, may be labeled as "supply amount", "material amount")
+- labour_amount: Total labour amount (quantity × labour_rate, may be labeled as "labour amount", "labor amount")
+- total_amount: Grand total (supply_amount + labour_amount, may be labeled as "total", "amount", "total amount")
 
 Return ONLY valid JSON (no markdown, no code blocks):
 {{

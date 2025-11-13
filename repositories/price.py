@@ -75,9 +75,9 @@ class PriceRepository:
                 StoreBoqItem.unit_of_measurement,
                 StoreBoqItem.supply_unit_rate,
                 StoreBoqItem.labour_unit_rate,
-                StoreBoqItem.supply_amount,
-                StoreBoqItem.labour_amount,
-                StoreBoqItem.total_amount,
+                StoreBoqItem.supply_amount,      # Can now read computed column
+                StoreBoqItem.labour_amount,      # Can now read computed column
+                StoreBoqItem.total_amount,       # Can now read computed column
                 Project.project_name,
                 StoreBoqFile.file_name,
                 similarity

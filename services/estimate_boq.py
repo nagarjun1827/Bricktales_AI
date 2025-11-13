@@ -339,7 +339,11 @@ class TBEBOQProcessor:
             if not items:
                 return {'success': False, 'error': 'No items found to generate embeddings'}
             
+<<<<<<< HEAD
             logger.info(f"Generating embeddings for {len(items)} items in parallel batches...")
+=======
+            logger.info(f"Generating embeddings for {len(items)} items")
+>>>>>>> 3ecfa74882656e185b462f94606b26887e4e7cc3
             
             batch_size = 100  # Gemini supports up to 100 items per batch
             embeddings_map = {}  # item_id -> embedding
@@ -352,6 +356,7 @@ class TBEBOQProcessor:
                 
                 logger.info(f"Batch {batch_num}/{total_batches} ({len(batch)} items)")
                 
+<<<<<<< HEAD
                 # Prepare batch data
                 batch_descriptions = [item['item_description'] for item in batch]
                 batch_item_ids = [item['item_id'] for item in batch]
@@ -384,6 +389,23 @@ class TBEBOQProcessor:
             logger.info(f"Total embeddings generated: {len(embeddings_map)}")
             if failed_items:
                 logger.warning(f"Failed items: {len(failed_items)}")
+=======
+                for item in batch:
+                    try:
+                        result = genai.embed_content(
+                            model=self.embedding_model,
+                            content=item['item_description'],
+                            task_type="retrieval_query"
+                        )
+                        embeddings_map[item['item_id']] = result['embedding']
+                    except Exception as e:
+                        logger.warning(f"Failed for item {item['item_id']}: {e}")
+                        continue
+                
+                logger.info(f"Generated {len(batch)} embeddings")
+            
+            logger.info(f"Total embeddings generated: {len(embeddings_map)}")
+>>>>>>> 3ecfa74882656e185b462f94606b26887e4e7cc3
             
             # Store embeddings temporarily in class instance for price fetching
             self._embeddings_cache = embeddings_map

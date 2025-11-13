@@ -4,7 +4,7 @@ Item extraction agent for BOQ processing.
 import logging
 import pandas as pd
 import re
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -46,28 +46,13 @@ class ItemExtractorAgent:
         location_id: int
     ) -> List[BOQItem]:
         """Extract BOQ items from dataframe."""
+        logger.info("Extracting items with intelligent parsing...")
         
         data_start = structure['data_start_row']
         column_structure = structure['column_structure']
         
         col_map = {col['type']: col['position'] for col in column_structure}
-        
-        # FALLBACK: If rate columns not detected, try pattern matching
-        if 'supply_rate' not in col_map or col_map['supply_rate'] is None:
-            logger.warning("supply_rate column not detected by Gemini, trying fallback pattern matching...")
-            supply_rate_col = self._find_rate_column(df, 'supply')
-            if supply_rate_col is not None:
-                col_map['supply_rate'] = supply_rate_col
-            else:
-                logger.warning("✗ Could not find supply_rate column")
-        
-        if 'labour_rate' not in col_map or col_map['labour_rate'] is None:
-            logger.warning("labour_rate column not detected by Gemini, trying fallback pattern matching...")
-            labour_rate_col = self._find_rate_column(df, 'labour')
-            if labour_rate_col is not None:
-                col_map['labour_rate'] = labour_rate_col
-            else:
-                logger.warning("✗ Could not find labour_rate column")
+        logger.debug(f"Column mapping: {col_map}")
         
         items = []
         data_df = df.iloc[data_start:].reset_index(drop=True)
@@ -86,31 +71,16 @@ class ItemExtractorAgent:
             unit = self._get_value(row, col_map.get('unit'), default='Each')
             quantity = self._extract_numeric(self._get_value(row, col_map.get('quantity')))
             
-            # Extract rates - check if column exists first
-            supply_rate = 0.0
-            if 'supply_rate' in col_map and col_map['supply_rate'] is not None:
-                supply_rate = self._extract_numeric(self._get_value(row, col_map['supply_rate']))
-                if supply_rate > 0:
-                    items_with_supply_rate += 1
+            # Extract supply rate and amount
+            supply_rate = self._extract_numeric(self._get_value(row, col_map.get('supply_rate')))
+            supply_amount = self._extract_numeric(self._get_value(row, col_map.get('supply_amount')))
             
-            labour_rate = 0.0
-            if 'labour_rate' in col_map and col_map['labour_rate'] is not None:
-                labour_rate = self._extract_numeric(self._get_value(row, col_map['labour_rate']))
-                if labour_rate > 0:
-                    items_with_labour_rate += 1
+            # Extract labour rate and amount
+            labour_rate = self._extract_numeric(self._get_value(row, col_map.get('labour_rate')))
+            labour_amount = self._extract_numeric(self._get_value(row, col_map.get('labour_amount')))
             
-            # Extract amounts
-            supply_amount = 0.0
-            if 'supply_amount' in col_map and col_map['supply_amount'] is not None:
-                supply_amount = self._extract_numeric(self._get_value(row, col_map['supply_amount']))
-            
-            labour_amount = 0.0
-            if 'labour_amount' in col_map and col_map['labour_amount'] is not None:
-                labour_amount = self._extract_numeric(self._get_value(row, col_map['labour_amount']))
-            
-            total_amount = 0.0
-            if 'total_amount' in col_map and col_map['total_amount'] is not None:
-                total_amount = self._extract_numeric(self._get_value(row, col_map['total_amount']))
+            # Extract total amount
+            total_amount = self._extract_numeric(self._get_value(row, col_map.get('total_amount')))
             
             # Skip invalid rows
             if not description:
@@ -134,12 +104,10 @@ class ItemExtractorAgent:
             # 2. Derive supply_rate if missing but have supply_amount and quantity
             if supply_rate == 0 and supply_amount > 0 and quantity > 0:
                 supply_rate = round(supply_amount / quantity, 2)
-                items_with_supply_rate += 1
             
             # 3. Derive labour_rate if missing but have labour_amount and quantity
             if labour_rate == 0 and labour_amount > 0 and quantity > 0:
                 labour_rate = round(labour_amount / quantity, 2)
-                items_with_labour_rate += 1
             
             # 4. If we have total_amount but no supply/labour breakdown, try to derive
             if total_amount > 0 and quantity > 0:
@@ -147,23 +115,16 @@ class ItemExtractorAgent:
                     # Assume all is supply if no labour info
                     if labour_amount == 0:
                         supply_rate = round(total_amount / quantity, 2)
-                        items_with_supply_rate += 1
                     # If labour_amount exists, derive labour_rate
                     elif labour_amount > 0:
                         labour_rate = round(labour_amount / quantity, 2)
                         remaining = total_amount - labour_amount
                         if remaining > 0:
                             supply_rate = round(remaining / quantity, 2)
-                            items_with_supply_rate += 1
-                            items_with_labour_rate += 1
             
             # Final validation - skip if no meaningful data
             if quantity == 0:
                 continue
-            
-            # Debug logging for first few items
-            if idx < 3:
-                logger.debug(f"Item {idx}: desc='{description[:40]}...', qty={quantity}, supply_rate={supply_rate}, labour_rate={labour_rate}")
             
             # Create item
             item = BOQItem(
