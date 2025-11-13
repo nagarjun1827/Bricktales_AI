@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, Text, String, TIMESTAMP, ForeignKey, DECIMAL
+    Column, Integer, Text, String, TIMESTAMP, ForeignKey, DECIMAL, Computed
 )
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -64,13 +64,11 @@ class StoreBoqFile(Base):
 
 class StoreBoqItem(Base):
     """
-    StoreBoqItem model - COMPUTED COLUMNS NOT DECLARED HERE.
+    StoreBoqItem model with computed columns.
     
-    The columns supply_amount, labour_amount, and total_amount exist in the database
-    as GENERATED STORED columns, but we DON'T declare them in SQLAlchemy.
-    
-    This prevents SQLAlchemy from trying to insert values into them.
-    If you need to read these values, query them explicitly in your SQL.
+    The supply_amount, labour_amount, and total_amount columns are GENERATED STORED
+    columns in PostgreSQL. They are declared here so SQLAlchemy can READ them,
+    but SQLAlchemy will NOT try to INSERT into them due to the Computed() declaration.
     """
     __tablename__ = "store_boq_items"
 
@@ -80,12 +78,35 @@ class StoreBoqItem(Base):
     item_description = Column(Text, nullable=False)
     unit_of_measurement = Column(String(20), nullable=False)
     quantity = Column(DECIMAL(18, 3), nullable=False)
-    supply_unit_rate = Column(DECIMAL(18, 2), nullable=False, default=0.0, server_default='0.0')
-    labour_unit_rate = Column(DECIMAL(18, 2), nullable=False, default=0.0, server_default='0.0')
     
-    # NOTE: supply_amount, labour_amount, total_amount are NOT declared here
-    # They exist in the database as GENERATED columns
-    # PostgreSQL will calculate them automatically on INSERT
+    # Rate columns - NOT NULL with defaults
+    supply_unit_rate = Column(
+        DECIMAL(18, 2), 
+        nullable=False, 
+        default=0.0, 
+        server_default='0.0'
+    )
+    labour_unit_rate = Column(
+        DECIMAL(18, 2), 
+        nullable=False, 
+        default=0.0, 
+        server_default='0.0'
+    )
+    
+    # Computed columns - SQLAlchemy can READ these but won't INSERT into them
+    # The key is using Computed() which tells SQLAlchemy these are server-side generated
+    supply_amount = Column(
+        DECIMAL(18, 2),
+        Computed("quantity * supply_unit_rate", persisted=True)
+    )
+    labour_amount = Column(
+        DECIMAL(18, 2),
+        Computed("quantity * labour_unit_rate", persisted=True)
+    )
+    total_amount = Column(
+        DECIMAL(18, 2),
+        Computed("quantity * supply_unit_rate + quantity * labour_unit_rate", persisted=True)
+    )
     
     location_id = Column(Integer, ForeignKey("store_boq_locations.location_id"))
     created_by = Column(Text)
