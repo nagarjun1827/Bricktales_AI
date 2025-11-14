@@ -1,13 +1,13 @@
 """
-Repository for price fetching operations using SQLAlchemy ORM.
+Async Repository for price fetching operations using SQLAlchemy ORM.
 Uses SQLAlchemy queries instead of raw SQL.
 """
 import logging
 from typing import List, Dict, Optional, Tuple
-from sqlalchemy import text, func, literal_column
-from sqlalchemy.orm import Session
+from sqlalchemy import text, func, literal_column, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from connections.postgres_connection import get_db_session
+from connections.postgres_connection import DatabaseConnection
 from models.store_boq_models import StoreBoqItem, StoreBoqFile, StoreBoqProject
 from models.project_models import Project
 
@@ -15,37 +15,30 @@ logger = logging.getLogger(__name__)
 
 
 class PriceRepository:
-    """Repository for price fetching operations using SQLAlchemy ORM."""
+    """Async repository for price fetching operations using SQLAlchemy ORM."""
     
     def __init__(self):
         """Initialize repository."""
-        pass
+        self.AsyncSessionLocal = DatabaseConnection.get_async_session_factory()
     
-    def _get_session(self) -> Session:
-        """Get a database session."""
-        return get_db_session()
-    
-    def get_boq_line_items(self, boq_id: int) -> List[Tuple]:
-        """Get all line items for a BOQ using SQLAlchemy ORM."""
-        session = self._get_session()
-        try:
-            items = session.query(
-                StoreBoqItem.item_id,
-                StoreBoqItem.item_code,
-                StoreBoqItem.item_description,
-                StoreBoqItem.unit_of_measurement,
-                StoreBoqItem.quantity
-            ).filter(
-                StoreBoqItem.boq_id == boq_id
-            ).order_by(
-                StoreBoqItem.item_id
-            ).all()
-            
+    async def get_boq_line_items(self, boq_id: int) -> List[Tuple]:
+        """Get all line items for a BOQ asynchronously."""
+        async with self.AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    StoreBoqItem.item_id,
+                    StoreBoqItem.item_code,
+                    StoreBoqItem.item_description,
+                    StoreBoqItem.unit_of_measurement,
+                    StoreBoqItem.quantity
+                )
+                .where(StoreBoqItem.boq_id == boq_id)
+                .order_by(StoreBoqItem.item_id)
+            )
+            items = result.all()
             return items
-        finally:
-            session.close()
     
-    def find_similar_items(
+    async def find_similar_items(
         self,
         query_embedding: List[float],
         unit: str,
@@ -53,22 +46,21 @@ class PriceRepository:
         min_similarity: float = 0.5
     ) -> List[Dict]:
         """
-        Find similar items from store_boq_items using vector similarity.
+        Find similar items from store_boq_items using vector similarity asynchronously.
         
         Uses SQLAlchemy ORM with pgvector operator for similarity search.
         """
-        session = self._get_session()
-        try:
+        async with self.AsyncSessionLocal() as session:
             query_str = '[' + ','.join(map(str, query_embedding)) + ']'
             
-            # Use SQLAlchemy with text() for vector operations
-            # Note: pgvector operators (<=> for cosine distance) need to be in text()
+            # Use SQLAlchemy with literal_column for vector operations
+            # Note: pgvector operators (<=> for cosine distance) need to be in literal_column
             similarity = literal_column(
                 f"1 - (description_embedding <=> '{query_str}'::vector)"
             ).label('similarity')
             
             # Build query using SQLAlchemy ORM
-            query = session.query(
+            query = select(
                 StoreBoqItem.item_id,
                 StoreBoqItem.item_code,
                 StoreBoqItem.item_description,
@@ -87,7 +79,7 @@ class PriceRepository:
                 StoreBoqProject, StoreBoqFile.store_project_id == StoreBoqProject.store_project_id
             ).join(
                 Project, StoreBoqProject.project_id == Project.project_id
-            ).filter(
+            ).where(
                 StoreBoqItem.description_embedding.isnot(None),
                 StoreBoqItem.unit_of_measurement == unit,
                 literal_column(f"1 - (description_embedding <=> '{query_str}'::vector)") >= min_similarity,
@@ -97,7 +89,8 @@ class PriceRepository:
                 literal_column(f"description_embedding <=> '{query_str}'::vector")
             ).limit(limit)
             
-            rows = query.all()
+            result = await session.execute(query)
+            rows = result.all()
             
             results = []
             for row in rows:
@@ -117,34 +110,28 @@ class PriceRepository:
                 })
             
             return results
-            
-        finally:
-            session.close()
     
-    def get_boq_info(self, boq_id: int) -> Optional[Dict]:
-        """Get BOQ file information using SQLAlchemy ORM."""
-        session = self._get_session()
-        try:
-            result = session.query(
-                StoreBoqFile.boq_id,
-                StoreBoqFile.file_name,
-                Project.project_name,
-                Project.project_code
-            ).join(
-                StoreBoqProject, StoreBoqFile.store_project_id == StoreBoqProject.store_project_id
-            ).join(
-                Project, StoreBoqProject.project_id == Project.project_id
-            ).filter(
-                StoreBoqFile.boq_id == boq_id
-            ).first()
+    async def get_boq_info(self, boq_id: int) -> Optional[Dict]:
+        """Get BOQ file information asynchronously."""
+        async with self.AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(
+                    StoreBoqFile.boq_id,
+                    StoreBoqFile.file_name,
+                    Project.project_name,
+                    Project.project_code
+                )
+                .join(StoreBoqProject, StoreBoqFile.store_project_id == StoreBoqProject.store_project_id)
+                .join(Project, StoreBoqProject.project_id == Project.project_id)
+                .where(StoreBoqFile.boq_id == boq_id)
+            )
+            row = result.fetchone()
             
-            if result:
+            if row:
                 return {
-                    'boq_id': result[0],
-                    'file_name': result[1],
-                    'project_name': result[2],
-                    'project_code': result[3]
+                    'boq_id': row.boq_id,
+                    'file_name': row.file_name,
+                    'project_name': row.project_name,
+                    'project_code': row.project_code
                 }
             return None
-        finally:
-            session.close()

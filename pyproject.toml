@@ -4,6 +4,7 @@ version = "2.0.0"
 description = "AI-powered Bill of Quantities processing system with SQLAlchemy ORM"
 requires-python = ">=3.13"
 dependencies = [
+    "asyncpg>=0.30.0",
     "dotenv>=0.9.9",
     "fastapi>=0.120.1",
     "google>=3.0.0",

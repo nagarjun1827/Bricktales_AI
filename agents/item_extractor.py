@@ -59,7 +59,7 @@ class ItemExtractorAgent:
             if supply_rate_col is not None:
                 col_map['supply_rate'] = supply_rate_col
             else:
-                logger.warning("✗ Could not find supply_rate column")
+                logger.warning("Could not find supply_rate column")
         
         if 'labour_rate' not in col_map or col_map['labour_rate'] is None:
             logger.warning("labour_rate column not detected by Gemini, trying fallback pattern matching...")
@@ -67,7 +67,7 @@ class ItemExtractorAgent:
             if labour_rate_col is not None:
                 col_map['labour_rate'] = labour_rate_col
             else:
-                logger.warning("✗ Could not find labour_rate column")
+                logger.warning("Could not find labour_rate column")
         
         items = []
         data_df = df.iloc[data_start:].reset_index(drop=True)
@@ -186,10 +186,6 @@ class ItemExtractorAgent:
         total_supply = sum(item.supply_amount for item in items)
         total_labour = sum(item.labour_amount for item in items)
         total_amount = sum(item.total_amount for item in items)
-        
-        logger.info(f"Supply Total: ₹{total_supply:,.2f}")
-        logger.info(f"Labour Total: ₹{total_labour:,.2f}")
-        logger.info(f"Grand Total: ₹{total_amount:,.2f}")
         
         return items
     

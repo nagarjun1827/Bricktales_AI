@@ -322,14 +322,14 @@ async def upload_estimate_boq_url(
     6. **Return Results**: Complete BOQ with estimated prices and pricing source
     
     **Request Body:**
-```json
-        {
-            "file_url": "http://35.200.254.142:3000/uploads/1/d0746c9a18f05c96ce5ebee135afd362.xlsx",
-            "uploaded_by": "user",
-            "min_similarity": 0.5,
-            "export_excel": true
-        }
-```
+    ```json
+            {
+                "file_url": "http://35.200.254.142:3000/uploads/<user_id>/<file_name>.xlsx",
+                "uploaded_by": "user",
+                "min_similarity": 0.5,
+                "export_excel": true
+            }
+    ```
     
     **Note:** System always finds the single best matching item (top_k = 1) and uses its rates directly
     

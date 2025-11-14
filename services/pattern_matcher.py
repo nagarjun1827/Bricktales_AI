@@ -1,10 +1,6 @@
-"""
-Pattern matching utilities for BOQ data extraction.
-"""
 import re
 import pandas as pd
 from typing import Dict, Optional
-
 
 class PatternMatcher:
     """Pattern matching for BOQ column identification."""

@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, Text, String, TIMESTAMP, ForeignKey, DECIMAL, Computed
+    Column, Integer, Text, String, Boolean,TIMESTAMP, ForeignKey, DECIMAL, Computed
 )
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -52,7 +52,7 @@ class StoreBoqFile(Base):
     file_path = Column(Text)
     file_type = Column(String(20))
     version = Column(Integer, default=1)
-    is_active = Column(String, default=True)
+    is_active = Column(Boolean, default=True)
     created_by = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_by = Column(Text)
