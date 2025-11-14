@@ -14,7 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/estimate-boq", tags=["Estimate BOQ Processing"])
 
-def background_tbe_process(
+async def background_tbe_process(
     task_id: str, 
     file_url: str, 
     uploaded_by: str,
@@ -29,10 +29,10 @@ def background_tbe_process(
         processing_tasks[task_id]["current_step"] = "file_processing"
 
         service = TBEBOQProcessor()
-        result = service.process_file_from_url(
+        result = await service.process_file_from_url(  # ADD await HERE
             file_url=file_url,
             uploaded_by=uploaded_by,
-            top_k=1,  # Always 1
+            top_k=1,
             min_similarity=min_similarity
         )
 
@@ -67,7 +67,6 @@ def background_tbe_process(
             "message": f"Error: {str(e)}",
             "current_step": "failed"
         })
-
 
 def _generate_excel_data(result: dict) -> str:
     """Generate Excel data from processing result as base64 string with Summary sheet"""
@@ -366,9 +365,9 @@ async def upload_estimate_boq_url(
         request.export_excel
     )
 
-    message = "Estimate BOQ processing started with automatic price fetching from URL (best match only)."
+    message = "Estimate BOQ processing started."
     if request.export_excel:
-        message += " Excel export with summary will be generated after processing."
+        message += " Excel file will be generated upon completion."
 
     return TBEProcessingStatus(
         task_id=task_id,
@@ -487,7 +486,7 @@ async def download_excel(task_id: str):
         
         # Return Excel as streaming response
         boq_id = result.get('boq_id', 'unknown')
-        filename = f"estimate_boq_{boq_id}_with_summary.xlsx"
+        filename = f"Estimated_boq_{boq_id}.xlsx"
         
         return StreamingResponse(
             io.BytesIO(excel_bytes),
@@ -532,16 +531,16 @@ async def delete_estimate_boq(boq_id: int):
         
         processor = TBEBOQProcessor()
         
-        # Check if BOQ exists
-        boq_info = processor.repo.get_boq_info(boq_id)
+        # Check if BOQ exists - ADD await
+        boq_info = await processor.repo.get_boq_info(boq_id)
         if not boq_info:
             raise HTTPException(
                 status_code=404,
                 detail=f"Estimate BOQ with ID {boq_id} not found"
             )
         
-        # Delete BOQ and related data
-        result = processor.repo.delete_boq_by_id(boq_id)
+        # Delete BOQ and related data - ADD await
+        result = await processor.repo.delete_boq_by_id(boq_id)
         
         if not result['success']:
             raise HTTPException(
@@ -576,7 +575,7 @@ async def get_estimate_boq_info(boq_id: int):
         from services.estimate_boq import TBEBOQProcessor
         
         processor = TBEBOQProcessor()
-        boq_info = processor.repo.get_boq_info(boq_id)
+        boq_info = await processor.repo.get_boq_info(boq_id)  # ADD await
         
         if not boq_info:
             raise HTTPException(

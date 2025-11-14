@@ -229,7 +229,7 @@ class StoreBOQRepository:
                     'success': True,
                     'boq_id': boq_id,
                     'deleted_counts': deleted_counts,
-                    'message': f'BOQ {boq_id} deleted successfully'
+                    'message': f'Stored BOQ deleted successfully'
                 }
                 
         except Exception as e:

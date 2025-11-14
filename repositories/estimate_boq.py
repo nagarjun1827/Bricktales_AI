@@ -336,7 +336,7 @@ class TBEBOQRepository:
                     'success': True,
                     'boq_id': boq_id,
                     'deleted_counts': deleted_counts,
-                    'message': f'Estimate BOQ {boq_id} and related data deleted successfully'
+                    'message': f'Estimate BOQ deleted successfully'
                 }
                 
             except Exception as e:

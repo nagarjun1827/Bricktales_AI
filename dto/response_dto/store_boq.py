@@ -5,7 +5,6 @@ class ProcessingStatus(BaseModel):
     task_id: str
     status: str
     message: str
-    progress: Optional[float] = None 
 
 class ProcessingResult(BaseModel):
     success: bool

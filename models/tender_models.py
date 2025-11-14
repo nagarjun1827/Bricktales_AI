@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Text, String, TIMESTAMP, Date, ForeignKey, DECIMAL
+from sqlalchemy import Column, Integer, Text, String, Boolean, TIMESTAMP, Date, ForeignKey, DECIMAL
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from models.base import Base
@@ -32,7 +32,7 @@ class TenderFile(Base):
     file_path = Column(Text)
     file_type = Column(String(20))
     version = Column(Integer, default=1)
-    is_active = Column(String, default=True)
+    is_active = Column(Boolean, default=True)
     created_by = Column(Text)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_by = Column(Text)
