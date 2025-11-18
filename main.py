@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from routers.estimate_boq import router as estimate_boq_router
 from routers.store_boq import router as store_boq_router
+from routers.tender import router as tender_router
 from connections.db_init import init_db_async, check_db_connection_async, check_db_connection
 from connections.postgres_connection import DatabaseConnection
 
@@ -16,11 +17,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    # Startup
     logger.info("Starting QuoCo BOQ API...")
     try:
         # Initialize database asynchronously
-        await init_db_async(create_tables=False)  # Set to True to auto-create tables
+        await init_db_async(create_tables=False)
         logger.info("Database initialized successfully")
         
         # Initialize both sync and async engines
@@ -53,6 +53,7 @@ app = FastAPI(
 
 app.include_router(store_boq_router)
 app.include_router(estimate_boq_router)
+app.include_router(tender_router)
 
 @app.get("/")
 def root():
