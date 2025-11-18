@@ -12,7 +12,7 @@ import pandas as pd
 import logging
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/estimate-boq", tags=["Estimate BOQ Processing"])
+router = APIRouter(prefix="/estimate-boq", tags=["Estimate BOQ"])
 
 async def background_tbe_process(
     task_id: str, 

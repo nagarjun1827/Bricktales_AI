@@ -1,30 +1,67 @@
-# QuoCo AI BOQ Processing System
+# BrickTales AI BOQ Processing System
 
-A comprehensive AI-powered Bill of Quantities (BOQ) processing system with semantic search, price estimation, and intelligent data extraction capabilities.
+A comprehensive AI-powered Bill of Quantities (BOQ) processing system with semantic search, intelligent price estimation, and automated data extraction capabilities.
 
 ## 🚀 Features
 
 ### Core Capabilities
-- **Store BOQ Processing**: Extract and process complete BOQ files with rates, quantities, and amounts
-- **TBE BOQ Processing**: Handle To-Be-Estimated BOQs (quantities only, no pricing) for future rate application
-- **Semantic Search**: Find similar BOQ items using AI-powered vector embeddings
-- **Price Fetching**: Get intelligent price recommendations based on historical data
-- **Multi-Agent Architecture**: Leverages specialized agents for project extraction, location parsing, and item extraction
+- **Storing the BOQ**: Extract and store BOQ files with complete pricing (supply rates, labour rates, quantities)
+- **Estimating the Prices of BOQ Line items**: Process BOQs without pricing and automatically fetch estimated rates from historical data
+- **Semantic Search**: Find similar BOQ items using AI-powered vector embeddings (pgvector)
+- **Intelligent Price Fetching**: Get price recommendations based on similarity matching with historical BOQ data
+- **Multi-Agent Architecture**: Specialized AI agents for project extraction, location parsing, and item extraction
 
 ### AI-Powered Features
 - **Gemini AI Integration**: Uses Google's Gemini 2.5 Flash for intelligent data extraction
-- **Vector Embeddings**: Semantic similarity search using pgvector and text-embedding-004 model
-- **Intelligent Column Detection**: Automatically identifies BOQ columns regardless of format
-- **Pattern Matching**: Robust pattern recognition for item codes, units, and descriptions
+- **Vector Embeddings**: Semantic similarity search using pgvector and text-embedding-004 model (768 dimensions)
+- **Intelligent Column Detection**: Automatically identifies BOQ columns regardless of Excel format
+- **Pattern Matching**: Robust pattern recognition for item codes, units, rates, and descriptions
+- **Parallel Batch Processing**: High-performance embedding generation with retry logic
 
 ## 📋 Table of Contents
+- [Architecture](#architecture)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Database Setup](#database-setup)
 - [Usage](#usage)
 - [API Endpoints](#api-endpoints)
 - [Project Structure](#project-structure)
-- [Features Deep Dive](#features-deep-dive)
+- [Workflow](#workflow)
+- [Performance](#performance)
+
+## 🏗️ Architecture
+
+### Technology Stack
+- **Backend Framework**: FastAPI (async)
+- **Database**: PostgreSQL 14+ with pgvector extension
+- **ORM**: SQLAlchemy 2.0 (async/await support)
+- **AI/ML**: Google Gemini 2.5 Flash, text-embedding-004
+- **Data Processing**: Pandas, OpenPyXL
+- **Agent Framework**: LangChain with custom tools
+- **Python Version**: 3.13+
+
+### Three-Tier Architecture
+```
+┌─────────────────────────────────────────┐
+│          API Layer (Routers)            │
+│  - store_boq.py: Store BOQ endpoints    │
+│  - estimate_boq.py: Estimate endpoints  │
+└─────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────┐
+│       Service Layer (Business Logic)    │
+│  - StoreBOQProcessor: File processing   │
+│  - TBEBOQProcessor: Price estimation    │
+│  - AI Agents: Data extraction           │
+└─────────────────────────────────────────┘
+                    ↓
+┌─────────────────────────────────────────┐
+│     Repository Layer (Data Access)      │
+│  - StoreBOQRepository: Store operations │
+│  - TBEBOQRepository: Estimate ops       │
+│  - PriceRepository: Similarity search   │
+└─────────────────────────────────────────┘
+```
 
 ## 🛠️ Installation
 
@@ -33,9 +70,9 @@ A comprehensive AI-powered Bill of Quantities (BOQ) processing system with seman
 - PostgreSQL 14+ with pgvector extension
 - Google Gemini API key
 
-### Step 1: Install uv (Fast Python Package Manager)
+### Step 1: Install uv (Recommended - Fast Python Package Manager)
 
-`uv` is an extremely fast Python package installer and resolver, written in Rust. It's significantly faster than pip.
+`uv` is an extremely fast Python package installer written in Rust (10-100x faster than pip).
 
 #### On macOS and Linux:
 ```bash
@@ -52,84 +89,39 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 pip install uv
 ```
 
-#### Verify Installation:
-```bash
-uv --version
-```
-
-### Step 2: Clone the Repository
+### Step 2: Clone Repository
 ```bash
 git clone <repository-url>
 cd bricktales-ai-boq
 ```
 
-### Step 3: Create Virtual Environment with uv
-
-#### Option 1: Using uv (Recommended - Fast!)
+### Step 3: Create Virtual Environment
 ```bash
-# Create virtual environment
+# Using uv (recommended)
 uv venv
 
 # Activate virtual environment
-# On Windows
+# On Windows:
 .venv\Scripts\activate
 
-# On macOS/Linux
+# On macOS/Linux:
 source .venv/bin/activate
 ```
 
-#### Option 2: Using Python's venv
+### Step 4: Install Dependencies
 ```bash
-python -m venv .venv
-
-# On Windows
-.venv\Scripts\activate
-
-# On macOS/Linux
-source .venv/bin/activate
-```
-
-### Step 4: Install Dependencies with uv
-
-#### Using uv (Blazingly Fast! ⚡)
-```bash
-# Install all dependencies from pyproject.toml
+# Using uv (blazingly fast! ⚡)
 uv pip install -e .
 
-# Or install specific packages
-uv pip install fastapi uvicorn psycopg2-binary pandas openpyxl \
-    python-dotenv google-generativeai langchain langchain-google-genai \
-    pydantic python-multipart
-```
-
-#### Using regular pip
-```bash
+# Or using regular pip
 pip install -e .
 ```
 
-### Performance Comparison
-```
- Installation Speed Comparison:
-   uv:  ~10-20 seconds  ⚡⚡⚡
-   pip: ~2-5 minutes    🐌
-   
-   uv is 10-100x faster than pip!
-```
-
-### Step 5: Verify Installation
-```bash
-# Check installed packages
-uv pip list
-
-# Or with pip
-pip list
-```
+**Performance Note**: uv installs packages 10-100x faster than pip!
 
 ## ⚙️ Configuration
 
-### Step 1: Create `.env` File
-Create a `.env` file in the project root:
-
+### Create `.env` File
 ```env
 # Gemini AI Configuration
 GEMINI_API_KEY=your_gemini_api_key_here
@@ -140,20 +132,17 @@ DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=your_password_here
 DB_NAME=boq_database
-
-# Upload Directory
-UPLOAD_DIR=./uploads
 ```
 
-### Step 2: Get Gemini API Key
+### Get Gemini API Key
 1. Visit [Google AI Studio](https://aistudio.google.com/apikey)
 2. Create a new API key
-3. Copy the key to your `.env` file
+3. Copy to your `.env` file
 
 ## 🗄️ Database Setup
 
 ### Step 1: Install PostgreSQL
-Download and install PostgreSQL from [postgresql.org](https://www.postgresql.org/download/)
+Download from [postgresql.org](https://www.postgresql.org/download/)
 
 ### Step 2: Install pgvector Extension
 ```sql
@@ -164,105 +153,33 @@ psql -U postgres -d boq_database
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-### Step 3: Create Database Schema
-Run the following SQL to create the required tables:
+### Step 3: Database Schema
 
-```sql
--- Projects Table
-CREATE TABLE projects (
-    project_id SERIAL PRIMARY KEY,
-    project_name VARCHAR(500) NOT NULL,
-    project_code VARCHAR(100) UNIQUE NOT NULL,
-    client_id INTEGER,
-    client_name VARCHAR(255),
-    start_date DATE,
-    end_date DATE,
-    version INTEGER DEFAULT 1,
-    created_by VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+The system uses the following main tables:
 
--- Locations Table
-CREATE TABLE locations (
-    location_id SERIAL PRIMARY KEY,
-    project_id INTEGER REFERENCES projects(project_id),
-    location_name VARCHAR(255) NOT NULL,
-    address TEXT,
-    latitude DECIMAL(10, 8),
-    longitude DECIMAL(11, 8),
-    created_by VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+**Projects Hierarchy:**
+```
+projects (main project info)
+  ├── store_boq_projects (historical BOQs with rates)
+  │   ├── store_boq_locations
+  │   ├── store_boq_files
+  │   └── store_boq_items (with embeddings, rates, computed amounts)
+  └── estimate_boq_projects (BOQs needing estimation)
+      ├── estimate_boq_locations
+      ├── estimate_boq_files
+      └── estimate_boq_items (with embeddings, quantities only)
+```
 
--- Store BOQ Files (with rates)
-CREATE TABLE store_boq_files (
-    boq_id SERIAL PRIMARY KEY,
-    project_id INTEGER REFERENCES projects(project_id),
-    file_name VARCHAR(255) NOT NULL,
-    file_path TEXT NOT NULL,
-    file_type VARCHAR(50),
-    version INTEGER DEFAULT 1,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_by VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+**Key Features:**
+- `store_boq_items` has computed columns for amounts (supply_amount, labour_amount, total_amount)
+- Both item tables support 768-dimensional vector embeddings for semantic search
+- Foreign key relationships maintain data integrity
+- Async-compatible with asyncpg driver
 
--- Store BOQ Items (with rates and embeddings)
-CREATE TABLE store_boq_items (
-    item_id SERIAL PRIMARY KEY,
-    boq_id INTEGER REFERENCES store_boq_files(boq_id),
-    item_code VARCHAR(100),
-    item_description TEXT NOT NULL,
-    unit_of_measurement VARCHAR(50),
-    quantity DECIMAL(15, 4),
-    supply_unit_rate DECIMAL(15, 2),
-    supply_amount DECIMAL(20, 2) GENERATED ALWAYS AS (quantity * supply_unit_rate) STORED,
-    labour_unit_rate DECIMAL(15, 2),
-    labour_amount DECIMAL(20, 2) GENERATED ALWAYS AS (quantity * labour_unit_rate) STORED,
-    total_amount DECIMAL(20, 2) GENERATED ALWAYS AS (quantity * (supply_unit_rate + COALESCE(labour_unit_rate, 0))) STORED,
-    location_id INTEGER REFERENCES locations(location_id),
-    description_embedding vector(768),
-    embedding_generated_at TIMESTAMP,
-    created_by VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_by VARCHAR(100),
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- TBE BOQ Files (without rates)
-CREATE TABLE to_be_estimated_boq_files (
-    boq_id SERIAL PRIMARY KEY,
-    project_id INTEGER REFERENCES projects(project_id),
-    file_name VARCHAR(255) NOT NULL,
-    file_path TEXT NOT NULL,
-    file_type VARCHAR(50),
-    version INTEGER DEFAULT 1,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_by VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- TBE BOQ Items (quantities only, no rates)
-CREATE TABLE to_be_estimated_boq_items (
-    item_id SERIAL PRIMARY KEY,
-    boq_id INTEGER REFERENCES to_be_estimated_boq_files(boq_id),
-    item_code VARCHAR(100),
-    item_description TEXT NOT NULL,
-    unit_of_measurement VARCHAR(50),
-    quantity DECIMAL(15, 4),
-    location_id INTEGER REFERENCES locations(location_id),
-    created_by VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Create indexes for performance
-CREATE INDEX idx_store_items_boq ON store_boq_items(boq_id);
-CREATE INDEX idx_store_items_embedding ON store_boq_items USING ivfflat (description_embedding vector_cosine_ops);
-CREATE INDEX idx_tbe_items_boq ON to_be_estimated_boq_items(boq_id);
+See full schema in documentation or create tables via:
+```python
+from connections.db_init import init_db_async
+await init_db_async(create_tables=True)
 ```
 
 ## 🚀 Usage
@@ -279,259 +196,277 @@ The API will be available at:
 
 ### Basic Workflow
 
-#### 1. Process Store BOQ (with rates)
+#### 1. Store BOQ (Historical Data with Rates)
 ```bash
-curl -X POST "http://localhost:8000/boq/upload" \
-  -F "file=@your_boq_file.xlsx" \
-  -F "uploaded_by=user123"
+curl -X POST "http://localhost:8000/store-boq/upload" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_url": "http://example.com/path/to/boq.xlsx",
+    "uploaded_by": "user123"
+  }'
 ```
 
-#### 2. Generate Embeddings
-```bash
-# Initialize database (first time only)
-curl -X POST "http://localhost:8000/embeddings/initialize"
+**What it does:**
+- Downloads Excel from URL
+- Extracts project info, location, and items
+- Identifies columns using AI (item code, description, quantity, unit, supply rate, labour rate)
+- Stores items with rates in database
+- Automatically generates 768-dimensional embeddings for semantic search
+- Uses parallel batch processing for fast embedding generation
 
-# Generate embeddings for a BOQ
-curl -X POST "http://localhost:8000/embeddings/generate" \
+#### 2. Estimate BOQ (New BOQ Needing Prices)
+```bash
+curl -X POST "http://localhost:8000/estimate-boq/upload" \
   -H "Content-Type: application/json" \
-  -d '{"boq_id": 1}'
+  -d '{
+    "file_url": "http://example.com/path/to/new_boq.xlsx",
+    "uploaded_by": "user123",
+    "min_similarity": 0.5,
+    "export_excel": true
+  }'
 ```
 
-#### 3. Fetch Prices for TBE BOQ
+**What it does:**
+- Downloads and processes Excel file
+- Extracts items (descriptions, quantities, units)
+- Generates embeddings for each item
+- Finds best matching historical item using vector similarity
+- Applies rates from best match (top_k=1)
+- Calculates estimated amounts
+- Optionally generates Excel with summary and detailed pricing
+
+#### 3. Check Processing Status
 ```bash
-curl -X POST "http://localhost:8000/prices/fetch" \
-  -H "Content-Type: application/json" \
-  -d '{"boq_id": 1, "top_k": 5, "min_similarity": 0.5}'
+curl -X GET "http://localhost:8000/estimate-boq/status/{task_id}"
 ```
 
-#### 4. Search Similar Items
+#### 4. Get Results
 ```bash
-curl -X POST "http://localhost:8000/embeddings/search" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "excavation work", "top_k": 10}'
+curl -X GET "http://localhost:8000/estimate-boq/result/{task_id}"
+```
+
+#### 5. Download Excel (if generated)
+```bash
+curl -X GET "http://localhost:8000/estimate-boq/download-excel/{task_id}" \
+  --output estimated_boq.xlsx
 ```
 
 ## 📚 API Endpoints
 
-### Store BOQ Processing (`/boq`)
-- `POST /boq/upload` - Upload and process BOQ file with rates
-- `GET /boq/status/{task_id}` - Check processing status
-- `GET /boq/result/{task_id}` - Get processing results
+### Store BOQ (`/store-boq`)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/upload` | POST | Process BOQ with rates from URL |
+| `/status/{task_id}` | GET | Check processing status |
+| `/result/{task_id}` | GET | Get processing results |
+| `/info/{boq_id}` | GET | Get BOQ information |
+| `/delete/{boq_id}` | DELETE | Delete BOQ and related data |
 
-### TBE BOQ Processing (`/estimate`)
-- `POST /estimate/upload` - Upload BOQ without rates
-- `GET /estimate/status/{task_id}` - Check processing status
-- `GET /estimate/result/{task_id}` - Get processing results
-- `GET /estimate/items/{boq_id}` - Retrieve TBE items
-- `GET /estimate/summary/{boq_id}` - Get BOQ summary
+### Estimate BOQ (`/estimate-boq`)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/upload` | POST | Process BOQ and fetch prices from URL |
+| `/status/{task_id}` | GET | Check processing status |
+| `/result/{task_id}` | GET | Get detailed results with pricing |
+| `/download-excel/{task_id}` | GET | Download Excel with estimates |
+| `/info/{boq_id}` | GET | Get BOQ information |
+| `/delete/{boq_id}` | DELETE | Delete BOQ and related data |
 
-### Embeddings (`/embeddings`)
-- `POST /embeddings/initialize` - Initialize vector database
-- `POST /embeddings/generate` - Generate embeddings for BOQ
-- `POST /embeddings/regenerate/{boq_id}` - Regenerate all embeddings
-- `POST /embeddings/search` - Search similar items
-- `GET /embeddings/status/{task_id}` - Check task status
-- `GET /embeddings/result/{task_id}` - Get task results
-- `GET /embeddings/stats` - Get embedding statistics
-
-### Price Fetching (`/prices`)
-- `POST /prices/fetch` - Fetch prices for BOQ items
-- `GET /prices/status/{task_id}` - Check fetching status
-- `GET /prices/result/{task_id}` - Get price recommendations
-- `GET /prices/export/{task_id}/csv` - Export results to CSV
-- `GET /prices/recommendations/{boq_id}` - Get recommendations directly
+### Health Check
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Async health check |
+| `/health/sync` | GET | Sync health check |
 
 ## 📁 Project Structure
-
 ```
 bricktales-ai-boq/
-├── app/
-│   ├── agents/              # AI agents for extraction
-│   │   ├── base_agent.py
-│   │   ├── langchain_tools.py
-│   │   ├── structure_agent.py
-│   │   ├── project_agent.py
-│   │   ├── location_agent.py
-│   │   └── item_agent.py
-│   ├── api/
-│   │   └── v1/
-│   │       ├── boq_router.py
-│   │       ├── tbe_router.py
-│   │       ├── embedding_router.py
-│   │       └── price_router.py
-│   ├── core/
-│   │   └── config.py         # Configuration management
-│   ├── models/
-│   │   ├── domain.py          # Domain models
-│   │   ├── dto.py             # Data transfer objects
-│   │   ├── embedding_domain.py
-│   │   ├── embedding_dto.py
-│   │   ├── tbe_domain.py
-│   │   ├── tbe_dto.py
-│   │   └── price_dto.py
-│   ├── repositories/
-│   │   ├── boq_repository.py
-│   │   ├── tbe_repository.py
-│   │   ├── embedding_repository.py
-│   │   └── price_repository.py
-│   ├── services/
-│   │   ├── boq_service.py
-│   │   ├── tbe_service.py
-│   │   ├── tbe_pattern_matcher.py
-│   │   ├── embedding_service.py
-│   │   └── price_service.py
-│   └── tasks/
-│       └── background.py      # Background task management
-├── uploads/                   # File upload directory
-├── .env                       # Environment configuration
-├── .gitignore
-├── .python-version           # Python version specification
-├── main.py                    # FastAPI application entry
-├── pyproject.toml            # Project dependencies
-└── README.md
+├── agents/                      # AI agents for data extraction
+│   ├── base_agent.py           # Base agent class
+│   ├── gemini_tools.py         # Gemini AI tools (structure, project, location)
+│   └── item_extractor.py       # Item extraction agent
+├── connections/                 # Database connections
+│   ├── postgres_connection.py  # Singleton connection manager (sync/async)
+│   └── db_init.py              # Database initialization utilities
+├── core/                        # Core configuration
+│   └── settings.py             # Application settings
+├── dto/                         # Data Transfer Objects
+│   ├── request_dto/            # Request models
+│   └── response_dto/           # Response models
+├── models/                      # SQLAlchemy ORM models
+│   ├── base.py                 # Base declarative class
+│   ├── project_models.py       # Project and company models
+│   ├── store_boq_models.py     # Store BOQ models (with computed columns)
+│   ├── estimate_boq_models.py  # Estimate BOQ models
+│   └── tender_models.py        # Tender models
+├── repositories/                # Data access layer
+│   ├── store_boq.py            # Store BOQ repository (async)
+│   ├── estimate_boq.py         # Estimate BOQ repository (async)
+│   └── price.py                # Price fetching repository (async)
+├── routers/                     # API routers
+│   ├── store_boq.py            # Store BOQ endpoints
+│   └── estimate_boq.py         # Estimate BOQ endpoints
+├── services/                    # Business logic layer
+│   ├── store_boq.py            # Store BOQ
+│   ├── estimate_boq.py         # Estimate BOQ
+│   └── pattern_matcher.py      # Pattern matching utilities
+├── tasks/                       # Background task management
+│   └── background_tasks.py     # Task tracking
+├── .env                         # Environment configuration
+├── main.py                      # FastAPI application entry point
+├── pyproject.toml              # Project dependencies
+└── README.md                    # This file
 ```
 
-##  Features Deep Dive
+## 🔄 Workflow
 
-### Multi-Agent Architecture
-The system uses specialized AI agents:
-- **Project Extractor**: Identifies project name, code, client, and dates
-- **Location Extractor**: Extracts location and address information
-- **Structure Analyzer**: Analyzes sheet structure and column layout
-- **Item Extractor**: Intelligently extracts BOQ line items
+### Store BOQ Workflow
+```
+1. Upload Excel via URL
+2. Download and parse Excel file
+3. Extract project info using Gemini AI
+4. Extract location info using Gemini AI
+5. Analyze sheet structure using Gemini AI
+6. Extract line items (description, qty, unit, rates)
+7. Store in database with computed amounts
+8. Generate embeddings in parallel batches (20-100 items/batch)
+9. Store embeddings for similarity search
+```
 
-### Semantic Search
-- Uses Google's text-embedding-004 model (768 dimensions)
-- Stores embeddings in PostgreSQL with pgvector
-- Supports cosine similarity search
-- Filters by BOQ, location, and similarity threshold
+### Estimate BOQ Workflow
+```
+1. Upload Excel via URL
+2. Process file (same as Store BOQ, steps 1-6)
+3. Extract items (description, qty, unit only)
+4. Store in estimate_boq_items table
+5. Generate embeddings for all items (parallel batches)
+6. For each item:
+   a. Use embedding to find top 1 most similar stored item
+   b. Check similarity score > min_similarity threshold
+   c. If match found: use its supply_rate and labour_rate
+   d. Calculate estimated amounts (qty × rate)
+7. Generate Excel with summary and detailed items (optional)
+8. Return complete results with pricing sources
+```
 
-### Price Fetching
-- Generates embeddings for TBE items on-the-fly
-- Finds similar items from historical store BOQs
-- Calculates price statistics (avg, min, max, median)
-- Considers unit of measurement matching
-- Provides detailed similar item information
+### Semantic Search Process
+```
+Query Item Description
+       ↓
+Generate 768-dim Embedding (text-embedding-004)
+       ↓
+Vector Similarity Search (pgvector cosine similarity)
+       ↓
+Filter by:
+  - Unit of Measurement match
+  - Minimum similarity threshold (default 0.5)
+  - Must have supply_rate > 0
+       ↓
+Return Top K Matches (default K=1 for estimation)
+       ↓
+Apply rates from best match
+```
 
-### Pattern Matching
-- Intelligent column detection (item code, description, quantity, unit, rate)
-- Unit normalization (sqm, cum, mtr, kg, nos, etc.)
-- Numeric value extraction from mixed content
-- Valid item code detection
+## ⚡ Performance
 
-## 🔧 Troubleshooting
+### Embedding Generation
+- **Parallel Batch Processing**: Processes 20-100 items per batch
+- **Retry Logic**: Exponential backoff for rate limiting (429 errors)
+- **Performance Gain**: 20-40x faster than sequential processing
+- **Example**: 1000 items processed in ~15-30 seconds
 
-### Common Issues
+### Database Operations
+- **Async SQLAlchemy**: Non-blocking database operations
+- **Connection Pooling**: Efficient connection management
+- **Computed Columns**: Database-side amount calculations
+- **Batch Inserts**: Bulk insert operations for items
 
-**Issue**: `pgvector extension not found`
+### API Response Times
+- **File Download**: Depends on file size and network
+- **Extraction**: 2-5 seconds per sheet (AI processing)
+- **Embedding Generation**: ~0.5-1 second per batch of 20 items
+- **Similarity Search**: <100ms per item (with pgvector indexes)
+
+## 🔧 Key Features Explained
+
+### 1. Computed Columns
+Store BOQ items use PostgreSQL GENERATED STORED columns:
 ```sql
--- Solution: Install pgvector
-CREATE EXTENSION IF NOT EXISTS vector;
+supply_amount = quantity * supply_unit_rate
+labour_amount = quantity * labour_unit_rate
+total_amount = quantity * (supply_unit_rate + labour_unit_rate)
 ```
+Benefits: Automatic calculation, no sync issues, always accurate
 
-**Issue**: `GEMINI_API_KEY not set`
-```bash
-# Solution: Add to .env file
-GEMINI_API_KEY=your_key_here
-```
+### 2. Vector Similarity Search
+- Uses pgvector extension for efficient similarity search
+- 768-dimensional embeddings from text-embedding-004
+- Cosine similarity metric for matching
+- IVFFlat index for fast searches on large datasets
 
-**Issue**: Database connection error
-```bash
-# Solution: Verify PostgreSQL is running
-# On Linux/macOS
-sudo service postgresql status
+### 3. Multi-Agent Architecture
+- **Structure Agent**: Analyzes Excel layout, identifies columns
+- **Project Agent**: Extracts project name, code, client, dates
+- **Location Agent**: Extracts location and address info
+- **Item Extractor**: Extracts line items with fallback pattern matching
 
-# On Windows
-# Check Services app for PostgreSQL service
+### 4. Intelligent Column Detection
+AI identifies columns even if headers are non-standard:
+- "S.No" / "Item No" → item_code
+- "Description" / "Particulars" / "Scope of Work" → description
+- "Qty" / "Quantity" → quantity
+- "UOM" / "Unit" → unit
+- "Rate" / "Supply Rate" / "Material Rate" → supply_rate
+- "Labour Rate" / "Labor Rate" → labour_rate
 
-# Check .env credentials match your PostgreSQL setup
-```
-
-**Issue**: uv command not found after installation
-```bash
-# Solution: Restart your terminal or add to PATH manually
-# On macOS/Linux, add to ~/.bashrc or ~/.zshrc:
-export PATH="$HOME/.cargo/bin:$PATH"
-
-# On Windows, the installer should handle PATH automatically
-# If not, add to system PATH: %USERPROFILE%\.cargo\bin
-```
-
-**Issue**: Slow package installation
-```bash
-# Solution: Use uv instead of pip!
-uv pip install <package>
-
-# uv is 10-100x faster than pip
-```
-
-## 💡 uv Pro Tips
-
-### Speed Up Development
-```bash
-# Install dependencies in parallel (uv does this by default!)
-uv pip install -r requirements.txt
-
-# Sync environment with pyproject.toml
-uv pip sync
-
-# Compile requirements for reproducible builds
-uv pip compile pyproject.toml -o requirements.txt
-
-# Create temporary virtual environment for testing
-uv venv --seed temp-env
-```
-
-### Why use uv?
-- ⚡ **10-100x faster** than pip
-- 🔒 **Drop-in replacement** for pip
-- 🎯 **Better dependency resolution**
-- 📦 **Smaller disk usage**
-- 🦀 **Written in Rust** for maximum performance
-
-## 📝 Example Usage
-
-### Processing a Store BOQ
+### 5. Rate Derivation Logic
+If rates missing but amounts present:
 ```python
-import requests
-
-# Upload file
-files = {'file': open('boq.xlsx', 'rb')}
-data = {'uploaded_by': 'john_doe'}
-response = requests.post('http://localhost:8000/boq/upload', files=files, data=data)
-task_id = response.json()['task_id']
-
-# Check status
-status = requests.get(f'http://localhost:8000/boq/status/{task_id}')
-print(status.json())
-
-# Get results when complete
-result = requests.get(f'http://localhost:8000/boq/result/{task_id}')
-print(result.json())
+if supply_amount > 0 and quantity > 0:
+    supply_rate = supply_amount / quantity
+if labour_amount > 0 and quantity > 0:
+    labour_rate = labour_amount / quantity
 ```
 
-### Searching for Similar Items
-```python
-search_payload = {
-    "query": "excavation in hard rock",
-    "top_k": 10,
-    "min_similarity": 0.7
-}
-response = requests.post(
-    'http://localhost:8000/embeddings/search',
-    json=search_payload
-)
-similar_items = response.json()['items']
-```
+## 🔒 Error Handling
+
+### Retry Mechanisms
+- **Embedding Generation**: 3 retries with exponential backoff
+- **Network Errors**: Handles timeouts, 500 errors, rate limits
+- **Database Errors**: Transaction rollback on failures
+
+### Data Validation
+- Minimum row/column requirements for sheets
+- Required columns validation (description, quantity)
+- Unit normalization (Sqm, Cum, Mtr, etc.)
+- Numeric value extraction with regex
 
 ## 🤝 Contributing
 
 Contributions are welcome! Please:
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📝 Best Practices
+
+### When to Use Store BOQ
+- You have historical BOQs with complete pricing
+- Want to build a database of rates for future estimation
+- Need to track project costs over time
+
+### When to Use Estimate BOQ
+- You have a new BOQ without pricing
+- Want to estimate costs based on similar historical work
+- Need quick price recommendations with source attribution
+
+### Similarity Threshold Guidelines
+- **0.7-1.0**: Very similar items (high confidence)
+- **0.5-0.7**: Moderately similar (good for general estimates)
+- **0.3-0.5**: Loosely similar (use with caution)
+- **<0.3**: Not recommended for pricing
 
 ## 📄 License
 
@@ -539,20 +474,21 @@ This project is proprietary software. All rights reserved.
 
 ## 🙏 Acknowledgments
 
-- **uv** by Astral for blazingly fast package management
+- **uv** by Astral for blazingly fast package management ⚡
 - **Google Gemini AI** for intelligent text extraction
 - **LangChain** for agent orchestration
 - **pgvector** for vector similarity search
-- **FastAPI** for the robust API framework
+- **FastAPI** for the robust async API framework
+- **SQLAlchemy** for powerful async ORM capabilities
 
 ## 📞 Support
 
 For issues or questions:
 - Open an issue on GitHub
-- Contact the development team
+- Contact the development team at support@bricktales.ai
 
 ---
 
 **Version**: 2.0.0  
-**Last Updated**: 2025  
-**Powered by**: uv ⚡
+**Last Updated**: November 2025  
+**Powered by**: Google Gemini AI, pgvector, FastAPI, SQLAlchemy, uv ⚡
