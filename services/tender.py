@@ -55,9 +55,7 @@ class TenderService:
         start_time = time.time()
         
         try:
-            logger.info("="*70)
-            logger.info("🚀 PROCESSING TENDER DOCUMENT")
-            logger.info("="*70)
+            logger.info("Processing tender document...")
             
             # Step 1: Fetch PDF
             raw_text = self._fetch_pdf_text(file_url)
@@ -65,16 +63,16 @@ class TenderService:
                 return {"error": "Failed to fetch PDF", "tender_file_id": -1}
             
             # Step 2: Extract structured data
-            logger.info("🤖 Extracting structured data...")
+            logger.info("Extracting structured data...")
             structured_data = self._extract_json_from_text(raw_text)
             
             # Step 3: Chunk document
             logger.info("Chunking document...")
             chunks = self._chunk_text(raw_text, MAX_CHUNK_SIZE)
-            logger.info(f"✓ Created {len(chunks)} chunks")
+            logger.info(f"Created {len(chunks)} chunks")
             
             # Step 4: Generate embeddings in parallel
-            logger.info("⚡ Generating hybrid embeddings (in parallel)...")
+            logger.info("Generating hybrid embeddings (in parallel)...")
             chunk_texts = [chunk['text'] for chunk in chunks]
             
             # Dense embeddings
@@ -107,7 +105,7 @@ class TenderService:
             else:
                 sparse_embeddings = [{} for _ in tokenized_chunks]
             
-            logger.info(f"✓ Generated {len(dense_embeddings)} hybrid embeddings")
+            logger.info(f"Generated {len(dense_embeddings)} hybrid embeddings")
             
             # Step 5: Store in database
             logger.info("Storing in database...")
@@ -160,8 +158,8 @@ class TenderService:
             
             processing_time = time.time() - start_time
             
-            logger.info(f"✓ Stored Project (ID: {project_id}), Tender (ID: {tender_id}), File (ID: {tender_file_id}), and {rows_inserted} chunks")
-            logger.info(f"\n✓ Document processed successfully in {processing_time:.2f}s!")
+            logger.info(f"Stored Project (ID: {project_id}), Tender (ID: {tender_id}), File (ID: {tender_file_id}), and {rows_inserted} chunks")
+            logger.info(f"\n Document processed successfully in {processing_time:.2f}s!")
             
             return {
                 "tender_file_id": tender_file_id,
@@ -264,9 +262,7 @@ class TenderService:
             if not await self._validate_tender_file(tender_file_id):
                 return "Error: Tender file not found"
             
-            logger.info("\n" + "="*70)
-            logger.info(f"📝 GENERATING SUMMARY (Mode: {explanation_level})")
-            logger.info("="*70)
+            logger.info(f"Generating Summary (Mode: {explanation_level})")
             
             # Get chunks
             chunks = await self.tender_repo.get_chunks_by_file_id(tender_file_id, limit=10)
@@ -312,7 +308,7 @@ class TenderService:
             is_simple = (explanation_level == 'simple')
             await self.tender_repo.update_tender_file_summary(tender_file_id, summary_text, is_simple)
             
-            logger.info("✓ Summary generated")
+            logger.info("Summary generated")
             return summary_text
             
         except Exception as e:
@@ -327,10 +323,8 @@ class TenderService:
             if not await self._validate_tender_file(tender_file_id):
                 return "Error: Tender file not found"
             
-            logger.info("\n" + "="*70)
-            logger.info(f"❓ Q&A AGENT (Mode: {explanation_level})")
+            logger.info(f"Q&A AGENT (Mode: {explanation_level})")
             logger.info(f"Question: {question}")
-            logger.info("="*70)
             
             # Retrieve relevant chunks
             retrieved_chunks = await self.retrieve_chunks(tender_file_id, question)
@@ -374,11 +368,8 @@ class TenderService:
             logger.info("-> Generating answer...")
             response = qa_agent_model.generate_content(prompt)
             
-            logger.info("\n" + "="*70)
-            logger.info("ANSWER:")
-            logger.info("="*70)
+            logger.info("Answer:")
             logger.info(response.text)
-            logger.info("="*70)
             
             return response.text
             
@@ -410,7 +401,7 @@ class TenderService:
                     raw_text += page_text
             
             raw_text = re.sub(r'(\n\s*)+\n', '\n', raw_text)
-            logger.info(f"✓ Extracted {len(raw_text)} characters")
+            logger.info(f"Extracted {len(raw_text)} characters")
             return raw_text
             
         except Exception as e:

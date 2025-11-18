@@ -27,7 +27,7 @@ def fetch_pdf_text(url: str) -> Optional[str]:
                 raw_text += page_text
         
         raw_text = re.sub(r'(\n\s*)+\n', '\n', raw_text)
-        print(f"✓ Extracted {len(raw_text)} characters")
+        print(f"Extracted {len(raw_text)} characters")
         return raw_text
         
     except Exception as e:
