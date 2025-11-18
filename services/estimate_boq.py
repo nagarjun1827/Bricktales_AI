@@ -1,13 +1,17 @@
+# services/estimate_boq.py
+
 import time
 import re
 import json
 import requests
 import io
 import logging
+import asyncio
 import pandas as pd
 import google.generativeai as genai
 from typing import Dict, Any, List, Optional
 from datetime import datetime, date
+from concurrent.futures import ThreadPoolExecutor
 from core.settings import settings
 from repositories.estimate_boq import TBEProjectInfo, EstimateBOQProjectInfo, TBELocationInfo, TBEBOQFileInfo, TBEBOQItem
 from dto.response_dto.estimate_boq import ItemWithPrice
@@ -80,11 +84,11 @@ class TBEBOQProcessor:
             embedding_time = time.time() - embedding_start
             logger.info(f"Embedding generation completed in {embedding_time:.2f}s")
             
-            # STEP 3: Fetch Prices Using Similarity Search
-            logger.info("Step 3: Fetching Prices Using Similarity Search")
+            # STEP 3: Fetch Prices Using Parallel Similarity Search
+            logger.info("Step 3: Fetching Prices Using Parallel Similarity Search")
             price_start = time.time()
             
-            price_result = await self._fetch_prices_for_items(
+            price_result = await self._fetch_prices_for_items_parallel(
                 boq_id, top_k, min_similarity
             )
             
@@ -390,7 +394,7 @@ class TBEBOQProcessor:
             
             logger.info(f"Generating embeddings for {len(items)} items in parallel batches...")
             
-            batch_size = 100
+            batch_size = 20
             embeddings_map = {}
             failed_items = []
             
@@ -441,135 +445,97 @@ class TBEBOQProcessor:
             logger.error(f"Embedding generation error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
     
-    async def _fetch_prices_for_items(
+    async def _fetch_prices_for_items_parallel(
         self, 
         boq_id: int, 
         top_k: int, 
-        min_similarity: float
+        min_similarity: float,
+        batch_size: int = 20,
+        max_workers: int = 10
     ) -> Dict[str, Any]:
-        """Fetch prices for all items using similarity search."""
+        """
+        Fetch prices for all items using parallel similarity search.
+        
+        Args:
+            boq_id: BOQ ID to fetch items for
+            top_k: Number of similar items to fetch per item
+            min_similarity: Minimum similarity threshold
+            batch_size: Number of items to process in each batch
+            max_workers: Maximum number of parallel workers
+        
+        Returns:
+            Dict with success status, counts, and item results
+        """
         try:
             items = await self.repo.get_tbe_items_by_boq(boq_id, limit=10000, offset=0)
             
             if not items:
                 return {'success': False, 'error': 'No items found'}
             
-            logger.info(f"Fetching prices for {len(items)} items (top 1 match per item)")
+            logger.info(f"Fetching prices for {len(items)} items in parallel batches")
+            logger.info(f"Batch size: {batch_size}, Max workers: {max_workers}")
             
             items_with_prices = 0
             items_without_prices = 0
             result_items = []
             
-            for idx, item in enumerate(items, 1):
-                item_id = item['item_id']
-                description = item['item_description']
-                unit = item['unit_of_measurement']
-                quantity = item['quantity']
-                item_code = item['item_code']
+            # Process items in batches
+            for batch_start in range(0, len(items), batch_size):
+                batch_end = min(batch_start + batch_size, len(items))
+                batch = items[batch_start:batch_end]
+                batch_num = (batch_start // batch_size) + 1
+                total_batches = (len(items) + batch_size - 1) // batch_size
                 
-                logger.debug(f"[{idx}/{len(items)}] {item_code or 'N/A'}: {description[:60]}")
+                logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch)} items)")
                 
-                if not hasattr(self, '_embeddings_cache') or item_id not in self._embeddings_cache:
-                    logger.warning(f"No embedding found for item {item_id}, skipping")
-                    items_without_prices += 1
-                    result_items.append(ItemWithPrice(
-                        item_id=item_id,
-                        item_code=item_code,
-                        description=description,
-                        unit=unit,
-                        quantity=quantity,
-                        estimated_supply_rate=None,
-                        estimated_labour_rate=None,
-                        estimated_supply_total=None,
-                        estimated_labour_total=None,
-                        estimated_total=None,
-                        pricing_source="No embedding generated",
-                        similarity_score=None
-                    ))
-                    continue
+                # Create tasks for parallel processing
+                tasks = []
+                for item in batch:
+                    task = self._fetch_price_for_single_item(
+                        item, 
+                        top_k, 
+                        min_similarity
+                    )
+                    tasks.append(task)
                 
-                query_embedding = self._embeddings_cache[item_id]
+                # Execute all tasks in parallel
+                batch_results = await asyncio.gather(*tasks, return_exceptions=True)
                 
-                similar_items = await self.price_repo.find_similar_items(
-                    query_embedding=query_embedding,
-                    unit=unit,
-                    limit=top_k,
-                    min_similarity=min_similarity
-                )
+                # Process results
+                for idx, result in enumerate(batch_results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Error processing item: {result}")
+                        items_without_prices += 1
+                        # Create error result item
+                        item = batch[idx]
+                        result_items.append(ItemWithPrice(
+                            item_id=item['item_id'],
+                            item_code=item['item_code'],
+                            description=item['item_description'],
+                            unit=item['unit_of_measurement'],
+                            quantity=item['quantity'],
+                            estimated_supply_rate=None,
+                            estimated_labour_rate=None,
+                            estimated_supply_total=None,
+                            estimated_labour_total=None,
+                            estimated_total=None,
+                            pricing_source=f"Error: {str(result)}",
+                            similarity_score=None
+                        ))
+                    else:
+                        if result['has_price']:
+                            items_with_prices += 1
+                        else:
+                            items_without_prices += 1
+                        result_items.append(result['item'])
                 
-                if similar_items:
-                    best_match = similar_items[0]
-                    
-                    similarity_score = best_match['similarity']
-                    logger.debug(f"Found match (similarity: {similarity_score:.3f})")
-                    items_with_prices += 1
-                    
-                    estimated_supply_rate = None
-                    estimated_labour_rate = None
-                    
-                    if best_match.get('supply_rate') and float(best_match['supply_rate']) > 0:
-                        estimated_supply_rate = float(best_match['supply_rate'])
-                    
-                    if best_match.get('labour_rate') and float(best_match['labour_rate']) > 0:
-                        estimated_labour_rate = float(best_match['labour_rate'])
-                    
-                    estimated_supply_total = None
-                    estimated_labour_total = None
-                    estimated_total = 0.0
-                    
-                    if estimated_supply_rate:
-                        estimated_supply_total = estimated_supply_rate * quantity
-                        estimated_total += estimated_supply_total
-                    
-                    if estimated_labour_rate:
-                        estimated_labour_total = estimated_labour_rate * quantity
-                        estimated_total += estimated_labour_total
-                    
-                    if estimated_supply_total is None and estimated_labour_total is None:
-                        estimated_total = None
-                    
-                    pricing_source = self._build_pricing_source(best_match, similarity_score)
-                    
-                    if estimated_supply_rate:
-                        logger.debug(f"Supply Rate: ₹{estimated_supply_rate:,.2f}/{unit}")
-                    if estimated_labour_rate:
-                        logger.debug(f"Labour Rate: ₹{estimated_labour_rate:,.2f}/{unit}")
-                    logger.debug(f"Source: {pricing_source}")
-                    
-                    result_items.append(ItemWithPrice(
-                        item_id=item_id,
-                        item_code=item_code,
-                        description=description,
-                        unit=unit,
-                        quantity=quantity,
-                        estimated_supply_rate=estimated_supply_rate,
-                        estimated_labour_rate=estimated_labour_rate,
-                        estimated_supply_total=estimated_supply_total,
-                        estimated_labour_total=estimated_labour_total,
-                        estimated_total=estimated_total,
-                        pricing_source=pricing_source,
-                        similarity_score=round(similarity_score, 3)
-                    ))
-                else:
-                    logger.debug("No similar items found")
-                    items_without_prices += 1
-                    result_items.append(ItemWithPrice(
-                        item_id=item_id,
-                        item_code=item_code,
-                        description=description,
-                        unit=unit,
-                        quantity=quantity,
-                        estimated_supply_rate=None,
-                        estimated_labour_rate=None,
-                        estimated_supply_total=None,
-                        estimated_labour_total=None,
-                        estimated_total=None,
-                        pricing_source=f"No similar items found (min similarity: {min_similarity})",
-                        similarity_score=None
-                    ))
+                logger.info(f"Batch {batch_num} completed: {items_with_prices} with prices, {items_without_prices} without")
             
+            # Clean up embeddings cache
             if hasattr(self, '_embeddings_cache'):
                 del self._embeddings_cache
+            
+            logger.info(f"Price fetching completed: {items_with_prices} with prices, {items_without_prices} without")
             
             return {
                 'success': True,
@@ -581,6 +547,130 @@ class TBEBOQProcessor:
         except Exception as e:
             logger.error(f"Price fetching error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
+    
+    async def _fetch_price_for_single_item(
+        self, 
+        item: Dict, 
+        top_k: int, 
+        min_similarity: float
+    ) -> Dict[str, Any]:
+        """
+        Fetch price for a single item using similarity search.
+        
+        Args:
+            item: Item dictionary with metadata
+            top_k: Number of similar items to fetch
+            min_similarity: Minimum similarity threshold
+        
+        Returns:
+            Dict with has_price flag and ItemWithPrice object
+        """
+        item_id = item['item_id']
+        description = item['item_description']
+        unit = item['unit_of_measurement']
+        quantity = item['quantity']
+        item_code = item['item_code']
+        
+        # Check if embedding exists
+        if not hasattr(self, '_embeddings_cache') or item_id not in self._embeddings_cache:
+            logger.warning(f"No embedding found for item {item_id}")
+            return {
+                'has_price': False,
+                'item': ItemWithPrice(
+                    item_id=item_id,
+                    item_code=item_code,
+                    description=description,
+                    unit=unit,
+                    quantity=quantity,
+                    estimated_supply_rate=None,
+                    estimated_labour_rate=None,
+                    estimated_supply_total=None,
+                    estimated_labour_total=None,
+                    estimated_total=None,
+                    pricing_source="No embedding generated",
+                    similarity_score=None
+                )
+            }
+        
+        query_embedding = self._embeddings_cache[item_id]
+        
+        # Find similar items
+        similar_items = await self.price_repo.find_similar_items(
+            query_embedding=query_embedding,
+            unit=unit,
+            limit=top_k,
+            min_similarity=min_similarity
+        )
+        
+        if not similar_items:
+            return {
+                'has_price': False,
+                'item': ItemWithPrice(
+                    item_id=item_id,
+                    item_code=item_code,
+                    description=description,
+                    unit=unit,
+                    quantity=quantity,
+                    estimated_supply_rate=None,
+                    estimated_labour_rate=None,
+                    estimated_supply_total=None,
+                    estimated_labour_total=None,
+                    estimated_total=None,
+                    pricing_source=f"No similar items found (min similarity: {min_similarity})",
+                    similarity_score=None
+                )
+            }
+        
+        # Get best match
+        best_match = similar_items[0]
+        similarity_score = best_match['similarity']
+        
+        # Extract rates
+        estimated_supply_rate = None
+        estimated_labour_rate = None
+        
+        if best_match.get('supply_rate') and float(best_match['supply_rate']) > 0:
+            estimated_supply_rate = float(best_match['supply_rate'])
+        
+        if best_match.get('labour_rate') and float(best_match['labour_rate']) > 0:
+            estimated_labour_rate = float(best_match['labour_rate'])
+        
+        # Calculate totals
+        estimated_supply_total = None
+        estimated_labour_total = None
+        estimated_total = 0.0
+        
+        if estimated_supply_rate:
+            estimated_supply_total = estimated_supply_rate * quantity
+            estimated_total += estimated_supply_total
+        
+        if estimated_labour_rate:
+            estimated_labour_total = estimated_labour_rate * quantity
+            estimated_total += estimated_labour_total
+        
+        if estimated_supply_total is None and estimated_labour_total is None:
+            estimated_total = None
+        
+        # Build pricing source
+        pricing_source = self._build_pricing_source(best_match, similarity_score)
+        
+        return {
+            'has_price': True,
+            'item': ItemWithPrice(
+                item_id=item_id,
+                item_code=item_code,
+                description=description,
+                unit=unit,
+                quantity=quantity,
+                estimated_supply_rate=estimated_supply_rate,
+                estimated_labour_rate=estimated_labour_rate,
+                estimated_supply_total=estimated_supply_total,
+                estimated_labour_total=estimated_labour_total,
+                estimated_total=estimated_total,
+                pricing_source=pricing_source,
+                similarity_score=round(similarity_score, 3)
+            )
+        }
     
     @staticmethod
     def _parse_date_from_year(year: Optional[int], month: int = 1, day: int = 1) -> Optional[date]:
@@ -719,7 +809,7 @@ class TBEBOQProcessor:
         price_time, total_time
     ):
         """Log final processing summary."""
-        logger.info("COMPLETE PROCESSING SUMMARY")
+        logger.info("Complete Processing Summary:")
         logger.info(f"Project ID: {project_id}")
         logger.info(f"Estimate Project ID: {estimate_project_id}")
         logger.info(f"Location ID: {location_id}")

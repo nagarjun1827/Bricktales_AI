@@ -15,6 +15,7 @@ dependencies = [
     "langchain-core>=0.3.79",
     "langchain-google-genai>=2.0.0",
     "langchain-text-splitters>=0.3.11",
+    "langsmith>=0.4.43",
     "openai>=2.6.0",
     "openpyxl>=3.1.5",
     "pandas>=2.3.3",
