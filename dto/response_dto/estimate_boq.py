@@ -5,7 +5,6 @@ class TBEProcessingStatus(BaseModel):
     task_id: str
     status: str
     message: str
-    progress: Optional[float] = None
     current_step: Optional[str] = None
 
 class ItemWithPrice(BaseModel):

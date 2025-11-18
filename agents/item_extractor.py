@@ -52,7 +52,23 @@ class ItemExtractorAgent:
         column_structure = structure['column_structure']
         
         col_map = {col['type']: col['position'] for col in column_structure}
-        logger.debug(f"Column mapping: {col_map}")
+        
+        # FALLBACK: If rate columns not detected, try pattern matching
+        if 'supply_rate' not in col_map or col_map['supply_rate'] is None:
+            logger.warning("supply_rate column not detected by Gemini, trying fallback pattern matching...")
+            supply_rate_col = self._find_rate_column(df, 'supply')
+            if supply_rate_col is not None:
+                col_map['supply_rate'] = supply_rate_col
+            else:
+                logger.warning("Could not find supply_rate column")
+        
+        if 'labour_rate' not in col_map or col_map['labour_rate'] is None:
+            logger.warning("labour_rate column not detected by Gemini, trying fallback pattern matching...")
+            labour_rate_col = self._find_rate_column(df, 'labour')
+            if labour_rate_col is not None:
+                col_map['labour_rate'] = labour_rate_col
+            else:
+                logger.warning("Could not find labour_rate column")
         
         items = []
         data_df = df.iloc[data_start:].reset_index(drop=True)
@@ -147,10 +163,6 @@ class ItemExtractorAgent:
         total_supply = sum(item.supply_amount for item in items)
         total_labour = sum(item.labour_amount for item in items)
         total_amount = sum(item.total_amount for item in items)
-        
-        logger.info(f"Supply Total: ₹{total_supply:,.2f}")
-        logger.info(f"Labour Total: ₹{total_labour:,.2f}")
-        logger.info(f"Grand Total: ₹{total_amount:,.2f}")
         
         return items
     

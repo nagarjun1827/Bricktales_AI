@@ -7,8 +7,9 @@ from contextlib import asynccontextmanager
 
 from routers.estimate_boq import router as estimate_boq_router
 from routers.store_boq import router as store_boq_router
-from connections.db_init import init_db, check_db_connection
-from connections.postgres_connection import close_db_connections
+from routers.tender import router as tender_router
+from connections.db_init import init_db_async, check_db_connection_async, check_db_connection
+from connections.postgres_connection import DatabaseConnection
 
 logger = logging.getLogger(__name__)
 
@@ -16,20 +17,31 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    # Startup
     logger.info("Starting QuoCo BOQ API...")
     try:
-        init_db(create_tables=False)  # Set to True to auto-create tables
+        # Initialize database asynchronously
+        await init_db_async(create_tables=False)
         logger.info("Database initialized successfully")
+        
+        # Initialize both sync and async engines
+        DatabaseConnection.get_sync_engine()
+        DatabaseConnection.get_async_engine()
+        logger.info("Database engines initialized")
+        
     except Exception as e:
-        logger.error(f"Database initialization failed: {e}")
+        logger.error(f"Database initialization failed: {e}", exc_info=True)
     
     yield
     
     # Shutdown
     logger.info("Shutting down QuoCo BOQ API...")
-    close_db_connections()
-    logger.info("Database connections closed")
+    try:
+        # Close both sync and async connections
+        DatabaseConnection.close_sync_engine()
+        await DatabaseConnection.close_async_engine()
+        logger.info("Database connections closed")
+    except Exception as e:
+        logger.error(f"Error closing database connections: {e}", exc_info=True)
 
 
 app = FastAPI(
@@ -41,6 +53,7 @@ app = FastAPI(
 
 app.include_router(store_boq_router)
 app.include_router(estimate_boq_router)
+app.include_router(tender_router)
 
 @app.get("/")
 def root():
@@ -72,15 +85,39 @@ def root():
             "Intelligent price fetching",
             "Excel export with pricing source",
             "Delete BOQ with cascade cleanup",
-            "SQLAlchemy ORM with connection pooling"
+            "Async SQLAlchemy ORM with connection pooling",
+            "Both sync and async database operations"
         ]
     }
 
 @app.get("/health")
-def health():
-    """Health check."""
+async def health():
+    """Health check endpoint (async)."""
+    try:
+        # Check async database connection
+        db_status = await check_db_connection_async()
+        return {
+            "status": "healthy" if db_status else "degraded",
+            "database": "connected" if db_status else "disconnected",
+            "api_version": "2.0.0"
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "database": "error",
+            "error": str(e),
+            "api_version": "2.0.0"
+        }
+
+@app.get("/health/sync")
+def health_sync():
+    """Health check endpoint (sync) - for backwards compatibility."""
+    
     db_status = check_db_connection()
     return {
         "status": "healthy" if db_status else "degraded",
-        "database": "connected" if db_status else "disconnected"
+        "database": "connected" if db_status else "disconnected",
+        "api_version": "2.0.0",
+        "mode": "sync"
     }

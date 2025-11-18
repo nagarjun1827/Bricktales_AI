@@ -5,18 +5,19 @@ from services.store_boq import StoreBOQProcessor
 from tasks.background_tasks import create_task, get_task, processing_tasks
 import uuid
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/store-boq", tags=["Store BOQ Processing"])
+router = APIRouter(prefix="/store-boq", tags=["Store BOQ"])
 
-def process_boq_background(task_id: str, file_url: str, uploaded_by: str):
-    """Background task for BOQ processing from URL."""
+async def process_boq_background(task_id: str, file_url: str, uploaded_by: str):
+    """Background task for BOQ processing from URL (ASYNC)."""
     try:
         processing_tasks[task_id]["status"] = "processing"
         processing_tasks[task_id]["message"] = "Processing BOQ file from URL..."
 
         processor = StoreBOQProcessor()
-        result = processor.process_file_from_url(file_url, uploaded_by)
+        result = await processor.process_file_from_url(file_url, uploaded_by)
 
         processing_tasks[task_id].update({
             "status": "completed" if result["success"] else "failed",
@@ -37,36 +38,14 @@ async def upload_store_boq_url(
     background_tasks: BackgroundTasks,
     request: StoreBOQURLRequest = Body(...)
 ):
-    """
-    Upload and process store BOQ file from a URL/link.
-    
-    **Workflow:**
-    1. Read Excel file directly from provided URL
-    2. Process BOQ and extract items with rates
-    3. Automatically generate semantic embeddings
-    4. Return complete results
-    
-    **Request Body:**
-    ```json
-        {
-            "file_url": "http://35.200.254.142:3000/uploads/1/ff89023ef5fa510d067f28ef121d5c45.xlsx",
-            "uploaded_by": "user"
-        }
-        
-    **Returns:**
-    - Task ID for tracking progress
-    - Use `/status/{task_id}` to check progress
-    - Use `/result/{task_id}` to get final results
-    """
+    """Upload and process store BOQ file from a URL/link."""
     task_id = str(uuid.uuid4())
-
-    # Create task
     create_task(task_id)
     
     processing_tasks[task_id]["status"] = "pending"
     processing_tasks[task_id]["message"] = "Starting processing from URL..."
 
-    # Start background processing
+    # Add async task to background
     background_tasks.add_task(process_boq_background, task_id, str(request.file_url), request.uploaded_by)
 
     return ProcessingStatus(
@@ -99,63 +78,17 @@ async def get_result(task_id: str):
         raise HTTPException(status_code=400, detail="Not complete")
     return ProcessingResult(**task["result"])
 
+
 @router.delete("/delete/{boq_id}", response_model=DeleteResponse, summary="Delete Store BOQ")
 async def delete_store_boq(boq_id: int):
-    """
-    Delete a Store BOQ file and all its related data from the database.
-    
-    **This will delete:**
-    1. All BOQ items associated with this file
-    2. The BOQ file record
-    3. Store project (if no other BOQs exist for it)
-    4. Locations (if store project is deleted)
-    5. Main project (if no other store/estimate projects exist)
-    
-    **Parameters:**
-    - **boq_id**: The ID of the Store BOQ file to delete
-    
-    **Returns:**
-    - Success status
-    - Count of deleted records from each table
-    - Confirmation message
-    
-    **Example Response:**
-```json
-    {
-        "success": true,
-        "boq_id": 123,
-        "deleted_counts": {
-            "boq_items": 150,
-            "boq_file": 1,
-            "locations": 2,
-            "store_project": 1,
-            "project": 1
-        },
-        "message": "Store BOQ 123 and related data deleted successfully"
-    }
-```
-    
-    **Note:** This operation cannot be undone. Make sure you want to permanently delete this data.
-    """
+    """Delete a Store BOQ file and all its related data from the database."""
     try:
-        from services.store_boq import StoreBOQProcessor
-        
         processor = StoreBOQProcessor()
-        
-        # Check if BOQ exists
-        boq_info = processor.repo.get_boq_info(boq_id)
-        if not boq_info:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Store BOQ with ID {boq_id} not found"
-            )
-        
-        # Delete BOQ and related data
-        result = processor.repo.delete_boq_by_id(boq_id)
+        result = await processor.delete_boq(boq_id)
         
         if not result['success']:
             raise HTTPException(
-                status_code=500,
+                status_code=404 if 'not found' in result.get('error', '').lower() else 500,
                 detail=result.get('error', 'Failed to delete Store BOQ')
             )
         
@@ -173,20 +106,10 @@ async def delete_store_boq(boq_id: int):
 
 @router.get("/info/{boq_id}", summary="Get Store BOQ Information")
 async def get_store_boq_info(boq_id: int):
-    """
-    Get basic information about a Store BOQ file.
-    
-    **Parameters:**
-    - **boq_id**: The ID of the Store BOQ file
-    
-    **Returns:**
-    - BOQ ID, file name, project details, creation date
-    """
+    """Get basic information about a Store BOQ file."""
     try:
-        from services.store_boq import StoreBOQProcessor
-        
         processor = StoreBOQProcessor()
-        boq_info = processor.repo.get_boq_info(boq_id)
+        boq_info = await processor.get_boq_info(boq_id)
         
         if not boq_info:
             raise HTTPException(
@@ -202,6 +125,7 @@ async def get_store_boq_info(boq_id: int):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Get info error: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get Store BOQ info: {str(e)}"
